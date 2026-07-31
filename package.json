@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Desktop application to remotely manage cloud-hosted VPS servers — dashboard, logs, terminal, file browser, process manager, and service control.",
   "author": "VPS Commander",
+  "license": "MIT",
   "main": "main.js",
   "scripts": {
     "icon": "node scripts/generate-icon.js",
