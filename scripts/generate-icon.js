@@ -1,7 +1,8 @@
 // ═══════════════════════════════════════════════════════════
 // VPS COMMANDER — Premium App Icon Generator
 // Industrial brutalist aesthetic — tactical shield + terminal motif
-// Scale-agnostic: produces standard (256) and Retina (1024) icons
+// Scale-agnostic: produces standard (512) and Retina (1024) icons
+// (512 minimum — electron-builder rejects macOS icons under 512px)
 // ═══════════════════════════════════════════════════════════
 const zlib = require('zlib');
 const fs = require('fs');
@@ -533,7 +534,7 @@ console.log('  ─────────────────────�
 const sizes = [
   { size: 16,  label: 'favicon-16x16',   out: 'favicon-16x16.png' },
   { size: 32,  label: 'favicon-32x32',   out: 'favicon-32x32.png' },
-  { size: 256, label: 'icon',            out: 'icon.png' },
+  { size: 512, label: 'icon',            out: 'icon.png' },
   { size: 1024,label: 'icon@2x',        out: 'icon@2x.png' },
 ];
 
@@ -557,4 +558,4 @@ console.log(`  ✓ icon.ico (${(ico.length / 1024).toFixed(1)} KB)`);
 console.log('\n  ─────────────────────────────');
 console.log('  Design: Tactical shield + terminal motif');
 console.log('  Colors: #0A0A0A bg, #E61919 accent, #4AF626 status');
-console.log('  Sizes:  16, 32, 256, 1024 px + multi-size ICO\n');
+console.log('  Sizes:  16, 32, 512, 1024 px + multi-size ICO\n');
