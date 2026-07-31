@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:* ws://localhost:*; img-src 'self' data:;">
+  <title>[ VPS COMMANDER ] :: TACTICAL TELEMETRY</title>
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/x-icon" href="icon.ico">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="crt-overlay"></div>
+  <div class="noise-overlay"></div>
+  <div class="scanline-sweep" id="scanline-sweep" aria-hidden="true"></div>
+
+  <!-- HEADER BAR -->
+  <header class="header-bar">
+    <div class="header-left">
+      <span class="header-brand">
+        <svg class="brand-mark" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 2l4.5 5L3 12"/><path d="M7.5 2l4.5 5-4.5 5"/></svg>
+        [ VPS COMMANDER ]
+      </span>
+      <span class="header-sep">///</span>
+      <span class="header-rev">REV 2.4.1</span>
+    </div>
+    <div class="header-center" id="server-tabs">
+      <span class="header-unit" id="header-unit">UNIT // DISCONNECTED</span>
+    </div>
+    <div class="header-right">
+      <button class="btn-sm" id="btn-bulk" title="Bulk Command" style="display:none;">BULK CMD</button>
+      <button class="btn-icon-only" id="btn-settings" title="Settings" aria-label="Settings">
+        <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M1.5 3.5h9M1.5 8.5h9"/><circle cx="6.5" cy="3.5" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="8.5" r="1.4" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <span class="header-sep">///</span>
+      <span class="header-time" id="header-time">--:--:--</span>
+    </div>
+  </header>
+
+  <!-- CONNECTION PANEL -->
+  <div id="connect-panel" class="connect-panel">
+    <div class="connect-card">
+      <h2 class="connect-title" data-text=">>> ESTABLISH SECURE LINK <<<">&gt;&gt;&gt; ESTABLISH SECURE LINK &lt;&lt;&lt;</h2>
+
+      <!-- Profile selector -->
+      <div class="profile-bar" id="profile-bar">
+        <select id="profile-select" class="profile-select">
+          <option value="">-- NEW CONNECTION --</option>
+        </select>
+        <button class="btn-sm" id="profile-save" title="Save Profile">
+          <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M1.5 1.5h7l2 2v7h-9z"/><path d="M4 1.5v3h4v-3M4 10.5V7h4v3.5"/></svg>
+          SAVE
+        </button>
+        <button class="btn-sm btn-danger" id="profile-delete" title="Delete Profile" style="display:none;" aria-label="Delete Profile">
+          <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M2 3h8M4.5 3V1.8h3V3M3 3l.6 7h4.8L9 3M5 5.2v3M7 5.2v3"/></svg>
+        </button>
+      </div>
+
+      <div class="connect-grid">
+        <div class="connect-field">
+          <label class="connect-label" for="conn-label">[ LABEL ]</label>
+          <input type="text" id="conn-label" class="connect-input" placeholder="Production Server">
+        </div>
+        <div class="connect-field">
+          <label class="connect-label" for="conn-host">[ HOST ]</label>
+          <input type="text" id="conn-host" class="connect-input" placeholder="192.168.1.100">
+        </div>
+        <div class="connect-field">
+          <label class="connect-label" for="conn-port">[ PORT ]</label>
+          <input type="number" id="conn-port" class="connect-input" placeholder="22" value="22">
+        </div>
+        <div class="connect-field">
+          <label class="connect-label" for="conn-user">[ USER ]</label>
+          <input type="text" id="conn-user" class="connect-input" placeholder="root" value="root">
+        </div>
+        <div class="connect-field connect-field-full">
+          <label class="connect-label">[ AUTH ]</label>
+          <div class="auth-toggle" role="tablist" aria-label="Authentication method">
+            <button class="auth-toggle-btn active" id="auth-pw-btn" role="tab" aria-selected="true">PASSWORD</button>
+            <button class="auth-toggle-btn" id="auth-key-btn" role="tab" aria-selected="false">SSH KEY</button>
+          </div>
+          <div id="auth-pw-group">
+            <input type="password" id="conn-pass" class="connect-input" placeholder="••••••••">
+          </div>
+          <div id="auth-key-group" style="display:none;">
+            <textarea id="conn-key" class="connect-input key-textarea" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----" rows="6"></textarea>
+            <div class="key-actions">
+              <button class="btn-sm" id="key-load-file">
+                <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M1 2.5h3.6l1.4 1.5H11v6H1z"/></svg>
+                LOAD FILE
+              </button>
+              <input type="file" id="key-file-input" style="display:none;" accept=".pem,.key,id_rsa,id_ed25519,id_ecdsa">
+              <span class="key-status" id="key-status"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="connect-actions">
+        <button id="connect-btn" class="btn-connect">
+          <span class="btn-icon">
+            <svg class="icon" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M3 1.8v8.4L10.2 6z"/></svg>
+          </span>
+          CONNECT
+        </button>
+        <span class="connect-status" id="connect-status">AWAITING CREDENTIALS</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN DASHBOARD -->
+  <main id="dashboard" class="dashboard" style="display:none;">
+
+    <!-- TOP ROW: STATS -->
+    <section class="stats-row">
+      <div class="stat-block">
+        <div class="stat-label">[ CPU_LOAD ]</div>
+        <div class="stat-value" id="stat-cpu">--</div>
+        <canvas class="stat-chart" id="chart-cpu"></canvas>
+        <div class="stat-bar"><div class="stat-bar-fill" id="stat-cpu-bar"></div></div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">[ MEMORY ]</div>
+        <div class="stat-value" id="stat-mem">--</div>
+        <canvas class="stat-chart" id="chart-mem"></canvas>
+        <div class="stat-bar"><div class="stat-bar-fill" id="stat-mem-bar"></div></div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">[ DISK_/ ]</div>
+        <div class="stat-value" id="stat-disk">--</div>
+        <canvas class="stat-chart" id="chart-disk"></canvas>
+        <div class="stat-bar"><div class="stat-bar-fill" id="stat-disk-bar"></div></div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">[ NETWORK ]</div>
+        <div class="stat-value net-value" id="stat-net">--</div>
+        <canvas class="stat-chart" id="chart-net"></canvas>
+        <div class="net-legend">
+          <span class="net-tx"><i class="net-dot-tx"></i>TX <span id="net-tx-val">--</span></span>
+          <span class="net-rx"><i class="net-dot-rx"></i>RX <span id="net-rx-val">--</span></span>
+        </div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">[ UPTIME ]</div>
+        <div class="stat-value" id="stat-uptime">--</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">[ LOAD_AVG ]</div>
+        <div class="stat-value" id="stat-load">--</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">[ PROCESSES ]</div>
+        <div class="stat-value" id="stat-procs">--</div>
+      </div>
+    </section>
+
+    <!-- MID ROW: TERMINAL + SERVICES -->
+    <section class="main-row">
+      <div class="panel panel-terminal">
+        <div class="panel-header">
+          <span class="panel-title">[ TERMINAL ]</span>
+          <span class="panel-subtitle" id="term-host">ssh://--</span>
+          <span class="panel-actions">
+            <button class="btn-icon-only" id="term-clear" title="Clear" aria-label="Clear terminal">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M9.5 4.5A4 4 0 1 0 10 7"/><path d="M9.5 1.5v3h-3"/></svg>
+            </button>
+          </span>
+        </div>
+        <div id="terminal-container" class="terminal-container"></div>
+      </div>
+
+      <div class="panel panel-services">
+        <div class="panel-header">
+          <span class="panel-tab tab-active" data-tab="services">[ SERVICES ]</span>
+          <span class="panel-tab" data-tab="processes">[ PROCESSES ]</span>
+          <span class="panel-tab" data-tab="ufw">[ UFW ]</span>
+          <span class="panel-tab" data-tab="docker">[ DOCKER ]</span>
+          <span class="panel-subtitle" id="svc-count">ACTIVE: --</span>
+          <span class="panel-subtitle" id="proc-count" style="display:none;">PROCS: --</span>
+          <span class="panel-subtitle" id="ufw-count" style="display:none;">RULES: --</span>
+          <span class="panel-actions">
+            <button class="btn-sm" id="svc-refresh" title="Refresh" aria-label="Refresh services">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M9.5 4.5A4 4 0 1 0 10 7"/><path d="M9.5 1.5v3h-3"/></svg>
+            </button>
+            <button class="btn-sm" id="proc-refresh" title="Refresh" style="display:none;" aria-label="Refresh processes">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M9.5 4.5A4 4 0 1 0 10 7"/><path d="M9.5 1.5v3h-3"/></svg>
+            </button>
+            <button class="btn-sm" id="ufw-refresh" title="Refresh" style="display:none;" aria-label="Refresh firewall rules">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M9.5 4.5A4 4 0 1 0 10 7"/><path d="M9.5 1.5v3h-3"/></svg>
+            </button>
+          </span>
+        </div>
+        <div class="panel-body tab-content" id="tab-services">
+          <div id="services-list">
+            <div class="empty-state">&gt;&gt; LOADING SERVICE MANIFEST...</div>
+          </div>
+        </div>
+        <div class="panel-body tab-content" id="tab-processes" style="display:none;">
+          <div class="proc-controls">
+            <input type="text" id="proc-search" class="proc-search" placeholder="Filter processes...">
+            <span class="proc-legend">
+              <span class="proc-legend-item" title="Terminate (SIGTERM)">KILL</span>
+              <span class="proc-legend-item" title="Force kill (SIGKILL)">KILL -9</span>
+              <span class="proc-legend-item" title="Deprioritize">NICE+5</span>
+              <span class="proc-legend-item" title="Prioritize">NICE-5</span>
+            </span>
+          </div>
+          <div class="proc-table-wrap">
+            <table class="proc-table" id="proc-table">
+              <thead>
+                <tr>
+                  <th class="sortable" data-sort="pid">PID</th>
+                  <th class="sortable" data-sort="user">USER</th>
+                  <th class="sortable active desc" data-sort="cpu">CPU%</th>
+                  <th class="sortable" data-sort="mem">MEM%</th>
+                  <th>COMMAND</th>
+                  <th class="th-actions">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="proc-tbody">
+                <tr><td colspan="6" class="empty-state">&gt;&gt; LOADING PROCESS TABLE...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel-body tab-content" id="tab-ufw" style="display:none;">
+          <div class="ufw-controls">
+            <span class="ufw-status" id="ufw-status">--</span>
+            <span class="ufw-policy" id="ufw-policy"></span>
+            <span class="proc-legend">
+              <button class="btn-sm" id="ufw-toggle-btn">TOGGLE</button>
+              <button class="btn-sm" id="ufw-add-btn">+ RULE</button>
+            </span>
+          </div>
+          <div class="ufw-add-form" id="ufw-add-form" style="display:none;">
+            <select id="ufw-rule-action" class="log-select" style="width:70px;">
+              <option value="allow">ALLOW</option>
+              <option value="deny">DENY</option>
+              <option value="reject">REJECT</option>
+              <option value="limit">LIMIT</option>
+            </select>
+            <input type="text" id="ufw-rule-input" class="proc-search" placeholder="e.g. 8080/tcp or from 192.168.1.0/24" style="flex:1;">
+            <button class="btn-sm" id="ufw-rule-submit">ADD</button>
+            <button class="btn-sm" id="ufw-rule-cancel">X</button>
+          </div>
+          <div class="proc-table-wrap">
+            <table class="proc-table" id="ufw-table">
+              <thead>
+                <tr>
+                  <th style="width:30px;">#</th>
+                  <th>RULE</th>
+                  <th style="width:60px;">ACTION</th>
+                  <th>FROM</th>
+                  <th style="width:30px;"></th>
+                </tr>
+              </thead>
+              <tbody id="ufw-tbody">
+                <tr><td colspan="5" class="empty-state">&gt;&gt; LOADING FIREWALL RULES...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+        <div class="panel-body tab-content" id="tab-docker" style="display:none;">
+          <div class="proc-controls">
+            <span class="ufw-status" id="docker-count">CONTAINERS: --</span>
+            <span class="panel-actions">
+              <button class="btn-sm" id="docker-refresh" title="Refresh" aria-label="Refresh containers">
+                <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M9.5 4.5A4 4 0 1 0 10 7"/><path d="M9.5 1.5v3h-3"/></svg>
+              </button>
+            </span>
+          </div>
+          <div class="proc-table-wrap">
+            <table class="proc-table" id="docker-table">
+              <thead>
+                <tr>
+                  <th>NAME</th>
+                  <th>IMAGE</th>
+                  <th style="width:90px;">STATUS</th>
+                  <th style="width:100px;">PORTS</th>
+                  <th class="th-actions">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="docker-tbody">
+                <tr><td colspan="5" class="empty-state">&gt;&gt; LOADING CONTAINERS...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BOTTOM ROW: LOGS + SYSTEM INFO -->
+    <section class="bottom-row">
+      <div class="panel panel-logs">
+        <div class="panel-header">
+          <span class="panel-tab tab-active" data-tab="logs">[ SYSTEM LOGS ]</span>
+          <span class="panel-tab" data-tab="files">[ FILES ]</span>
+          <span class="panel-subtitle" id="file-path-info" style="display:none;">/</span>
+          <span class="panel-actions" id="log-actions">
+            <select id="log-selector" class="log-select">
+              <option value="/var/log/syslog">/var/log/syslog</option>
+              <option value="/var/log/auth.log">/var/log/auth.log</option>
+              <option value="/var/log/kern.log">/var/log/kern.log</option>
+              <option value="/var/log/nginx/access.log">/var/log/nginx/access.log</option>
+              <option value="/var/log/nginx/error.log">/var/log/nginx/error.log</option>
+              <option value="/var/log/mysql/error.log">/var/log/mysql/error.log</option>
+            </select>
+            <button class="btn-sm" id="log-refresh">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M9.5 4.5A4 4 0 1 0 10 7"/><path d="M9.5 1.5v3h-3"/></svg>
+              REFRESH
+            </button>
+            <button class="btn-sm" id="log-export">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M6 1.5v6M3 4.5l3 3 3-3"/><path d="M2 10h8"/></svg>
+              EXPORT
+            </button>
+          </span>
+          <span class="panel-actions" id="file-actions" style="display:none;">
+            <button class="btn-sm" id="file-home" title="Home" aria-label="Home directory">~</button>
+            <button class="btn-sm" id="file-up" title="Up" aria-label="Parent directory">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M6 10V2M2.5 5.5L6 2l3.5 3.5"/></svg>
+            </button>
+            <button class="btn-sm" id="file-refresh" title="Refresh" aria-label="Refresh directory">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M9.5 4.5A4 4 0 1 0 10 7"/><path d="M9.5 1.5v3h-3"/></svg>
+            </button>
+            <button class="btn-sm" id="file-mkdir" title="New Dir">+DIR</button>
+            <button class="btn-sm" id="file-upload-btn" title="Upload" aria-label="Upload file">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M6 8V1.5M2.5 4.5L6 1.5l3.5 3M2 10.5h8"/></svg>
+            </button>
+            <input type="file" id="file-upload-input" style="display:none;">
+          </span>
+        </div>
+        <div class="panel-body tab-content" id="tab-logs">
+          <div class="log-container" id="log-container">
+            <div class="empty-state">&gt;&gt; NO LOG DATA RECEIVED...</div>
+          </div>
+        </div>
+        <div class="panel-body tab-content" id="tab-files" style="display:none;">
+          <div class="file-path-bar" id="file-path-bar">
+            <span class="file-path-seg" data-path="/">/</span>
+          </div>
+          <div class="file-table-wrap">
+            <table class="file-table" id="file-table">
+              <thead>
+                <tr>
+                  <th>NAME</th>
+                  <th class="th-size">SIZE</th>
+                  <th class="th-perms">PERMISSIONS</th>
+                  <th class="th-date">MODIFIED</th>
+                  <th class="th-actions">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="file-tbody">
+                <tr><td colspan="5" class="empty-state">&gt;&gt; SELECT A SERVER TO BROWSE FILES</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel panel-sysinfo">
+        <div class="panel-header">
+          <span class="panel-tab tab-active" data-tab="sysinfo">[ SYSTEM INFO ]</span>
+          <span class="panel-tab" data-tab="audit">[ AUDIT LOG ]</span>
+          <span class="panel-tab" data-tab="applog">[ APP LOG ]</span>
+          <span class="panel-subtitle" id="audit-count" style="display:none;">ENTRIES: 0</span>
+          <span class="panel-subtitle" id="applog-count" style="display:none;">ERRORS: 0</span>
+          <span class="panel-actions">
+            <button class="btn-sm" id="audit-refresh" title="Refresh" style="display:none;" aria-label="Refresh audit log">
+              <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M9.5 4.5A4 4 0 1 0 10 7"/><path d="M9.5 1.5v3h-3"/></svg>
+            </button>
+            <button class="btn-sm" id="audit-clear" style="display:none;">CLEAR</button>
+            <button class="btn-sm" id="applog-refresh" title="Refresh" style="display:none;">&#8635;</button>
+          </span>
+        </div>
+        <div class="panel-body tab-content" id="tab-sysinfo">
+          <div class="sysinfo-row"><span class="si-label">HOSTNAME</span><span class="si-value" id="si-hostname">--</span></div>
+          <div class="sysinfo-row"><span class="si-label">OS</span><span class="si-value" id="si-os">--</span></div>
+          <div class="sysinfo-row"><span class="si-label">KERNEL</span><span class="si-value" id="si-kernel">--</span></div>
+          <div class="sysinfo-row"><span class="si-label">NETWORK</span><span class="si-value" id="si-network">--</span></div>
+        </div>
+        <div class="panel-body tab-content" id="tab-audit" style="display:none;">
+          <div class="audit-container" id="audit-container">
+            <div class="empty-state">&gt;&gt; NO AUDIT ENTRIES...</div>
+          </div>
+        </div>
+        <div class="panel-body tab-content" id="tab-applog" style="display:none;">
+          <div class="audit-container" id="applog-container">
+            <div class="empty-state">&gt;&gt; NO APP ERRORS...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- STATUS BAR -->
+  <footer class="status-bar">
+    <span id="status-conn">LINK: DISCONNECTED</span>
+    <span class="status-sep">|</span>
+    <span id="status-latency">LATENCY: --ms</span>
+    <span class="status-sep">|</span>
+    <span id="status-last">LAST: --</span>
+    <span class="status-sep">|</span>
+    <span id="status-sessions">SESSIONS: 0</span>
+    <span class="status-sep">|</span>
+    <span class="status-disconnect" id="btn-disconnect" style="display:none;cursor:pointer;">[ DISCONNECT ACTIVE ]</span>
+  </footer>
+
+  <!-- FILE EDITOR MODAL -->
+  <div id="editor-modal" class="modal-overlay modal-instant" style="display:none;">
+    <div class="modal-card editor-card">
+      <div class="modal-header">
+        <span class="modal-title">[ FILE EDITOR ]</span>
+        <span class="modal-subtitle" id="editor-path">--</span>
+        <span class="panel-actions">
+          <span class="editor-info" id="editor-info">Ln 1, Col 1</span>
+          <button class="btn-sm" id="editor-save" title="Ctrl+S">
+            <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><path d="M1.5 1.5h7l2 2v7h-9z"/><path d="M4 1.5v3h4v-3M4 10.5V7h4v3.5"/></svg>
+            SAVE
+          </button>
+          <button class="btn-icon-only" id="editor-close" title="Esc" aria-label="Close editor">
+            <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
+          </button>
+        </span>
+      </div>
+      <div class="modal-body editor-body">
+        <textarea id="editor-textarea" class="editor-textarea" spellcheck="false"></textarea>
+      </div>
+      <div class="modal-footer editor-footer">
+        <span class="editor-status" id="editor-status">READY</span>
+        <span class="editor-shortcuts">Ctrl+S Save &bull; Esc Close</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- UNLOCK MODAL -->
+  <div id="unlock-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card modal-sm">
+      <div class="modal-header">
+        <span class="modal-title">[ VAULT LOCKED ]</span>
+      </div>
+      <div class="modal-body">
+        <p class="unlock-desc">&gt;&gt; PROFILE VAULT IS ENCRYPTED WITH A MASTER PASSWORD</p>
+        <div class="connect-field unlock-field">
+          <label class="connect-label" for="unlock-pass">[ MASTER PASSWORD ]</label>
+          <input type="password" id="unlock-pass" class="connect-input" placeholder="Enter master password...">
+          <span class="unlock-error" id="unlock-error" style="display:none;">INCORRECT PASSWORD</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-connect" id="unlock-btn">
+          <span class="btn-icon">
+            <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="square" aria-hidden="true"><rect x="2" y="5.2" width="8" height="5.3"/><path d="M4 5.2V3.6a2 2 0 0 1 4 0v1.6"/></svg>
+          </span>
+          UNLOCK
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BULK EXEC MODAL -->
+  <div id="bulk-modal" class="modal-overlay modal-instant" style="display:none;">
+    <div class="modal-card editor-card">
+      <div class="modal-header">
+        <span class="modal-title">[ BULK COMMAND ]</span>
+        <span class="modal-subtitle" id="bulk-server-count">0 SERVERS</span>
+        <button class="btn-icon-only" id="bulk-close" title="Esc" aria-label="Close bulk command">
+          <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
+        </button>
+      </div>
+      <div class="modal-body bulk-body">
+        <div class="bulk-command-row">
+          <input type="text" id="bulk-command" class="connect-input" placeholder="Enter command to run on all servers...">
+          <button class="btn-connect" id="bulk-execute">
+            <span class="btn-icon">
+              <svg class="icon" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M3 1.8v8.4L10.2 6z"/></svg>
+            </span>
+            RUN
+          </button>
+        </div>
+        <div class="bulk-output" id="bulk-output">
+          <div class="empty-state">&gt;&gt; ENTER A COMMAND AND CLICK RUN</div>
+        </div>
+      </div>
+      <div class="modal-footer editor-footer">
+        <span class="editor-status" id="bulk-status">READY</span>
+        <span class="editor-shortcuts">Enter to run &bull; Esc to close</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title">[ SETTINGS ]</span>
+        <button class="btn-icon-only" id="settings-close" title="Esc" aria-label="Close settings">
+          <svg class="icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section">
+          <h3 class="settings-heading">DISPLAY</h3>
+          <div class="settings-row">
+            <span class="settings-label">Theme</span>
+            <select id="setting-theme" class="settings-select">
+              <option value="tactical">TACTICAL TELEMETRY (DARK)</option>
+              <option value="swiss">SWISS INDUSTRIAL (LIGHT)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Terminal Font Size</span>
+            <input type="number" id="setting-fontsize" class="settings-input" min="10" max="24" value="13">
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3 class="settings-heading">POLLING INTERVALS (ms)</h3>
+          <div class="settings-row">
+            <span class="settings-label">Stats</span>
+            <input type="number" id="setting-stats" class="settings-input" min="1000" max="30000" step="500" value="3000">
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Services</span>
+            <input type="number" id="setting-services" class="settings-input" min="5000" max="60000" step="1000" value="10000">
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Logs</span>
+            <input type="number" id="setting-logs" class="settings-input" min="5000" max="120000" step="5000" value="30000">
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3 class="settings-heading">SECURITY</h3>
+          <div class="settings-row">
+            <span class="settings-label">Master Password</span>
+            <span class="settings-value" id="setting-master-status">--</span>
+          </div>
+          <div id="master-password-group" style="margin-top:8px;">
+            <div class="settings-row" id="master-set-group">
+              <span class="settings-label">New Password</span>
+              <input type="password" id="setting-master-pw" class="settings-input" placeholder="Min 6 chars" style="width:180px;">
+            </div>
+            <div class="settings-row" id="master-confirm-group">
+              <span class="settings-label">Confirm</span>
+              <input type="password" id="setting-master-pw2" class="settings-input" placeholder="Confirm" style="width:180px;">
+            </div>
+            <div class="settings-row">
+              <span></span>
+              <span class="settings-value" id="setting-master-error" style="display:none;color:var(--red);"></span>
+            </div>
+            <div class="settings-row">
+              <span></span>
+              <button class="btn-sm" id="setting-master-set-btn">SET MASTER PASSWORD</button>
+              <button class="btn-sm" id="setting-master-remove-btn" style="display:none;">REMOVE MASTER</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3 class="settings-heading">ALERTS</h3>
+          <div class="settings-row">
+            <span class="settings-label">Enable Alerts</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="setting-alert-enabled" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Audible Alarm</span>
+            <span class="settings-value" style="display:flex;align-items:center;gap:8px;">
+              <label class="toggle-switch">
+                <input type="checkbox" id="setting-alert-sound" checked>
+                <span class="toggle-slider"></span>
+              </label>
+              <button class="btn-sm" id="alert-sound-test" title="Preview the alarm beep">TEST</button>
+            </span>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">CPU Threshold (%)</span>
+            <input type="number" id="setting-alert-cpu" class="settings-input" min="0" max="100" value="90" style="width:70px;">
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Memory Threshold (%)</span>
+            <input type="number" id="setting-alert-mem" class="settings-input" min="0" max="100" value="90" style="width:70px;">
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Disk Threshold (%)</span>
+            <input type="number" id="setting-alert-disk" class="settings-input" min="0" max="100" value="90" style="width:70px;">
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3 class="settings-heading">DATA</h3>
+          <div class="settings-row">
+            <span class="settings-label">Log Lines</span>
+            <input type="number" id="setting-loglines" class="settings-input" min="50" max="1000" step="50" value="200">
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Config Directory</span>
+            <span class="settings-value" id="setting-configdir">--</span>
+          </div>
+          <div class="settings-row">
+            <button class="btn-sm" id="setting-reset">RESET TO DEFAULTS</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-connect" id="settings-save">SAVE</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

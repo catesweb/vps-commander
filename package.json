@@ -1,0 +1,88 @@
+{
+  "name": "vps-commander",
+  "version": "1.0.0",
+  "description": "Desktop application to remotely manage cloud-hosted VPS servers — dashboard, logs, terminal, file browser, process manager, and service control.",
+  "author": "VPS Commander",
+  "main": "main.js",
+  "scripts": {
+    "icon": "node scripts/generate-icon.js",
+    "start": "electron .",
+    "dev": "electron .",
+    "server": "node server.js",
+    "prebuild": "npm run icon",
+    "build": "electron-builder",
+    "build:win": "npm run icon && electron-builder --win",
+    "build:mac": "npm run icon && electron-builder --mac",
+    "build:linux": "npm run icon && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.vpscommander.app",
+    "productName": "VPS Commander",
+    "copyright": "Copyright © 2026 VPS Commander",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "server.js",
+      "ssh-handler.js",
+      "settings.js",
+      "crypto-util.js",
+      "app-logger.js",
+      "public/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "public/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VPS Commander",
+      "deleteAppDataOnUninstall": false,
+      "displayLanguageSelector": false,
+      "menuCategory": "System Tools"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "public/icon.png",
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "public/icon.png",
+      "category": "System"
+    }
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ssh2": "^1.15.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  }
+}

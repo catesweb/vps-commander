@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+  <title>VPS Commander</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 100vw; height: 100vh; overflow: hidden;
+      background: #0A0A0A; color: #EAEAEA;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+
+    /* ── Scanline sweep ─────────────────────────────────────── */
+    .scanline {
+      position: fixed; inset: 0; pointer-events: none; z-index: 10;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px
+      );
+    }
+
+    /* ── Shield icon ────────────────────────────────────────── */
+    .icon-wrap {
+      position: relative;
+      width: 120px; height: 120px;
+      opacity: 0; transform: scale(0.85);
+      animation: iconReveal 0.8s cubic-bezier(0.23, 1, 0.32, 1) 0.2s forwards;
+    }
+
+    .icon-wrap img {
+      width: 100%; height: 100%;
+      image-rendering: -webkit-optimize-contrast;
+    }
+
+    /* Red glow behind icon */
+    .icon-glow {
+      position: absolute; inset: -30px;
+      background: radial-gradient(circle, rgba(230,25,25,0.15) 0%, transparent 70%);
+      opacity: 0;
+      animation: glowPulse 2s ease-in-out 0.8s forwards;
+      z-index: -1;
+    }
+
+    /* ── Title block ────────────────────────────────────────── */
+    .title-block {
+      text-align: center; margin-top: 28px;
+      opacity: 0; transform: translateY(8px);
+      animation: textReveal 0.6s cubic-bezier(0.23, 1, 0.32, 1) 0.6s forwards;
+    }
+
+    .title {
+      font-size: 22px; font-weight: 700;
+      letter-spacing: 0.18em; color: #EAEAEA;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    .subtitle {
+      font-size: 10px; letter-spacing: 0.25em;
+      color: #E61919; margin-top: 6px;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* ── Loading bar ────────────────────────────────────────── */
+    .load-bar {
+      position: absolute; bottom: 40px; left: 50%;
+      transform: translateX(-50%);
+      width: 180px; height: 2px;
+      background: #1F1F1F; border-radius: 1px;
+      overflow: hidden;
+      opacity: 0;
+      animation: textReveal 0.4s ease 1.0s forwards;
+    }
+
+    .load-bar::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, #E61919, #FF4444);
+      transform-origin: left;
+      animation: loadProgress 1.8s cubic-bezier(0.4, 0, 0.2, 1) 1.0s forwards;
+      transform: scaleX(0);
+    }
+
+    /* ── Version text ───────────────────────────────────────── */
+    .version {
+      position: absolute; bottom: 18px;
+      font-size: 8px; letter-spacing: 0.15em;
+      color: #333; font-family: monospace;
+      opacity: 0;
+      animation: textReveal 0.4s ease 1.2s forwards;
+    }
+
+    /* ── Corner accents ─────────────────────────────────────── */
+    .corner {
+      position: absolute; width: 12px; height: 12px;
+      opacity: 0;
+      animation: textReveal 0.5s ease 1.4s forwards;
+    }
+    .corner::before, .corner::after {
+      content: ''; position: absolute; background: #E61919;
+    }
+    .corner--tl { top: 20px; left: 20px; }
+    .corner--tl::before { top: 0; left: 0; width: 12px; height: 1px; }
+    .corner--tl::after { top: 0; left: 0; width: 1px; height: 12px; }
+    .corner--tr { top: 20px; right: 20px; }
+    .corner--tr::before { top: 0; right: 0; width: 12px; height: 1px; }
+    .corner--tr::after { top: 0; right: 0; width: 1px; height: 12px; }
+    .corner--bl { bottom: 20px; left: 20px; }
+    .corner--bl::before { bottom: 0; left: 0; width: 12px; height: 1px; }
+    .corner--bl::after { bottom: 0; left: 0; width: 1px; height: 12px; }
+    .corner--br { bottom: 20px; right: 20px; }
+    .corner--br::before { bottom: 0; right: 0; width: 12px; height: 1px; }
+    .corner--br::after { bottom: 0; right: 0; width: 1px; height: 12px; }
+
+    /* ── Keyframes ──────────────────────────────────────────── */
+    @keyframes iconReveal {
+      from { opacity: 0; transform: scale(0.85); filter: blur(4px); }
+      to   { opacity: 1; transform: scale(1);    filter: blur(0); }
+    }
+
+    @keyframes glowPulse {
+      0%   { opacity: 0; }
+      50%  { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+
+    @keyframes textReveal {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes loadProgress {
+      from { transform: scaleX(0); }
+      to   { transform: scaleX(1); }
+    }
+
+    /* ── Reduced motion ─────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      .icon-wrap, .title-block, .load-bar, .version, .corner, .icon-glow {
+        animation-duration: 0.01ms !important;
+        animation-delay: 0ms !important;
+      }
+      .icon-wrap { opacity: 1; transform: none; filter: none; }
+      .title-block, .load-bar, .version, .corner { opacity: 1; transform: none; }
+      .icon-glow { opacity: 0.6; }
+    }
+  </style>
+</head>
+<body>
+  <div class="scanline"></div>
+
+  <!-- Corner accents -->
+  <div class="corner corner--tl"></div>
+  <div class="corner corner--tr"></div>
+  <div class="corner corner--bl"></div>
+  <div class="corner corner--br"></div>
+
+  <!-- Shield icon -->
+  <div class="icon-wrap">
+    <div class="icon-glow"></div>
+    <img src="icon.png" alt="VPS Commander" draggable="false">
+  </div>
+
+  <!-- Title -->
+  <div class="title-block">
+    <div class="title">VPS COMMANDER</div>
+    <div class="subtitle">TACTICAL TELEMETRY</div>
+  </div>
+
+  <!-- Loading bar -->
+  <div class="load-bar"></div>
+
+  <!-- Version -->
+  <div class="version">v1.0.0</div>
+</body>
+</html>
