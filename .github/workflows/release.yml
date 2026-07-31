@@ -16,8 +16,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     env:
-      # No signing certs in CI — skip code-signing discovery entirely
-      # (otherwise electron-builder can hang probing macOS/Windows identities)
+      # If no signing secrets are configured, disable code-signing discovery so
+      # electron-builder never hangs probing local keychains. When secrets ARE
+      # set (see docs/SIGNING.md), the env block below feeds them to the build
+      # and auto-discovery remains off — explicit CSC_LINK vars take precedence.
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +33,17 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libfuse2
       - name: Build installers
+        env:
+          # Code-signing credentials — empty unless the repo secrets are set.
+          # See docs/SIGNING.md for how to create and store them.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          # Apple notarization (v2 — App Store Connect API key)
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: npm run build
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -39,6 +52,7 @@ jobs:
           path: |
             dist/*.exe
             dist/*.dmg
+            dist/*.zip
             dist/*.AppImage
             dist/*.deb
             dist/*.yml
@@ -46,7 +60,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Draft GitHub Release
+    name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -54,14 +68,17 @@ jobs:
         with:
           path: dist-artifacts
           merge-multiple: true
+      # IMPORTANT: not a draft — electron-updater's GitHub provider only sees
+      # published "latest" releases, so updates stay invisible until published.
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: false
           generate_release_notes: true
           files: |
             dist-artifacts/*.exe
             dist-artifacts/*.dmg
+            dist-artifacts/*.zip
             dist-artifacts/*.AppImage
             dist-artifacts/*.deb
             dist-artifacts/*.yml

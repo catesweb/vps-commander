@@ -26,6 +26,7 @@ A cross-platform Electron desktop application for monitoring and controlling clo
 - [CI/CD](#cicd)
 - [Project Structure](#project-structure)
 - [Development](#development)
+- [Contributing](#contributing)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
@@ -67,6 +68,13 @@ A cross-platform Electron desktop application for monitoring and controlling clo
 - Server tabs in the header bar to switch between sessions
 - **BULK COMMAND**: Run the same command across all connected servers with per-server output
 - Session timeouts (1 hour default, configurable)
+
+### Auto-Update
+- **Self-updating** via GitHub Releases (electron-updater)
+- Checks for updates 5 seconds after launch and via **Help → Check for Updates…**
+- Native prompt to download + install; restarts the app automatically
+- Windows (NSIS), macOS (DMG/ZIP), and Linux (AppImage) update feeds published by the release workflow
+- Note: macOS auto-update requires a signed/notarized build (see [CI/CD](#cicd)); unsigned builds open the Releases page instead
 
 ### Security
 - **Vault system**: AES-256-GCM encrypted profile storage
@@ -146,6 +154,8 @@ Download the latest release for your platform from the [Releases](https://github
 | macOS | `*.dmg` |
 | Linux | `*.AppImage` or `*.deb` |
 
+> Auto-update works with the **NSIS installer**, **DMG/ZIP**, and **AppImage** builds. The Windows *portable* `.exe` does not self-update (electron-updater limitation) — use the installer to receive updates.
+
 ---
 
 ## Build from Source
@@ -165,7 +175,7 @@ npm run build:mac    # macOS (.dmg)
 npm run build:linux  # Linux (.AppImage, .deb)
 ```
 
-Output appears in the `dist/` folder. The `prebuild` hook regenerates app icons automatically.
+Output appears in the `dist/` folder. The `prebuild` hook regenerates app icons automatically for builds; during development you can run `npm run icon` directly to regenerate them.
 
 ### Run Server Only (Browser Mode)
 
@@ -437,7 +447,7 @@ GitHub Actions workflows are included:
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
 | `ci.yml` | Push to `main`, pull requests | Syntax-checks all source files, runs the server smoke test, and verifies the app packages on Windows, macOS, and Linux |
-| `release.yml` | Push tag `v*` | Builds all platform installers, uploads them, and drafts a GitHub Release with release notes |
+| `release.yml` | Push tag `v*` | Builds all platform installers, uploads them, and publishes a GitHub Release with release notes + auto-update feeds |
 
 To publish a release:
 
@@ -446,7 +456,11 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The release workflow will build `.exe` (Windows), `.dmg` (macOS), and `.AppImage`/`.deb` (Linux), attach them to a **draft** release, and generate release notes from merged PRs. Review and publish the draft on GitHub.
+The release workflow builds `.exe` (Windows), `.dmg` + `.zip` (macOS), and `.AppImage`/`.deb` (Linux), attaches them to a **published** release (not a draft — drafts are invisible to `electron-updater`), and uploads the `latest*.yml` update feeds + `.blockmap` files that power auto-update. Release notes are generated from merged PRs. Existing installs will see the new version via **Help → Check for Updates…** or automatically on launch.
+
+**Auto-update configuration** lives in `package.json` (`build.publish`): GitHub provider pointing at `catesweb/vps-commander`. No `GH_TOKEN` is needed because the repo is public.
+
+**Code signing & notarization**: releases are unsigned until you configure signing secrets. See [docs/SIGNING.md](docs/SIGNING.md) for a step-by-step guide on setting up **Windows Authenticode** (`.pfx`), **macOS Developer ID** (`.p12`), and **Apple notarization** (App Store Connect API key) as GitHub secrets. Once the secrets exist, `release.yml` signs installers automatically — and notarizes macOS builds once you add the `notarize` block to `package.json` (per the guide). Signed macOS installs then get silent auto-updates instead of the Releases-page fallback.
 
 ---
 
@@ -503,6 +517,12 @@ npm run server     # Server only → http://localhost:3141
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide: dev setup, project layout, code style, testing & validation, the PR workflow, the release process, and how to report issues and security vulnerabilities.
+
+---
+
 ## Troubleshooting
 
 ### "Port 3141 is already in use"
@@ -525,4 +545,10 @@ Settings and profiles live in `~/.vps-commander/`. Deleting that folder resets t
 
 ## License
 
-MIT
+Released under the [MIT License](LICENSE).
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
