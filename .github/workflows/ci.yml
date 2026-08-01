@@ -82,6 +82,18 @@ jobs:
             node --check "$f"
           done
 
+      # The `secrets` context is not available in `if:` expressions. Using it
+      # there is a parse error that kills the whole workflow at startup with
+      # zero jobs — so nothing running *inside* a workflow can catch it. Map
+      # the secret to `env:` at job level and test `env.NAME` instead.
+      - name: "No secrets context in if: conditions"
+        run: |
+          if grep -rnE '^[[:space:]]*if:.*secrets\.' .github/workflows/; then
+            echo "::error::'secrets' is not valid in an if: expression — it fails the workflow at startup. Map it to job-level env: and test env.NAME instead."
+            exit 1
+          fi
+          echo "OK — no secrets context in if: conditions."
+
   docs:
     name: Docs freshness
     runs-on: ubuntu-latest
