@@ -2,7 +2,10 @@
   "name": "vps-commander",
   "version": "1.0.0",
   "description": "Desktop application to remotely manage cloud-hosted VPS servers — dashboard, logs, terminal, file browser, process manager, and service control.",
-  "author": "VPS Commander",
+  "author": {
+    "name": "VPS Commander",
+    "email": "ateschristian@gmail.com"
+  },
   "license": "MIT",
   "main": "main.js",
   "scripts": {
@@ -12,10 +15,10 @@
     "dev": "electron .",
     "server": "node server.js",
     "prebuild": "npm run icon",
-    "build": "electron-builder",
-    "build:win": "npm run icon && electron-builder --win",
-    "build:mac": "npm run icon && electron-builder --mac",
-    "build:linux": "npm run icon && electron-builder --linux"
+    "build": "electron-builder --publish never",
+    "build:win": "npm run icon && electron-builder --win --publish never",
+    "build:mac": "npm run icon && electron-builder --mac --publish never",
+    "build:linux": "npm run icon && electron-builder --linux --publish never"
   },
   "build": {
     "appId": "com.vpscommander.app",
@@ -71,8 +74,20 @@
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "icon": "public/icon.png",
       "category": "public.app-category.utilities",
