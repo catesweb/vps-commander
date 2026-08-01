@@ -28,6 +28,17 @@ jobs:
             node --check "$f"
           done
 
+  docs:
+    name: Docs freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify docs TOC anchors and relative links
+        run: node scripts/docs-freshness.js
+
   smoke:
     name: Server smoke test
     runs-on: ubuntu-latest
