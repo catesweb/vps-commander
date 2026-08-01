@@ -7,6 +7,7 @@
   "main": "main.js",
   "scripts": {
     "icon": "node scripts/generate-icon.js",
+    "a11y": "node scripts/a11y-audit.js",
     "start": "electron .",
     "dev": "electron .",
     "server": "node server.js",
@@ -44,11 +45,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "public/icon.ico"
@@ -65,25 +70,44 @@
       "menuCategory": "System Tools"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "public/icon.png",
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "catesweb",
+        "repo": "vps-commander",
+        "releaseType": "release"
+      }
+    ],
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "public/icon.png",
       "category": "System"
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "express": "^4.18.2",
     "ssh2": "^1.15.0",
     "ws": "^8.16.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "electron": "^43.2.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.62.1"
   }
 }

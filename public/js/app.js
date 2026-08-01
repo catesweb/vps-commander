@@ -26,15 +26,17 @@ const State = {
   fileList: [],
   history: { cpu: [], mem: [], disk: [], netTx: [], netRx: [] },
   maxHistory: 60,
-  alerts: { cpu: false, mem: false, disk: false },
+  alerts: { cpu: false, mem: false, disk: false, network: false },
   ufwActive: false,
   prevNetRx: null, prevNetTx: null,
+  soundCache: {},       // decoded AudioBuffer cache: { cpu: AudioBuffer, ... }
+  lastAlertSound: {},   // per-type debounce: { cpu: timestamp, ... }
 };
 
 // ── DOM REFS ──────────────────────────────────────────────
 const dom = {
   connectPanel: $('#connect-panel'),
-  dashboard: $('#dashboard'),
+  dashboardView: $('#dashboard-view'),
   connectBtn: $('#connect-btn'),
   connectStatus: $('#connect-status'),
   serverTabs: $('#server-tabs'),
@@ -76,6 +78,7 @@ const dom = {
   statusConn: $('#status-conn'), statusLatency: $('#status-latency'),
   statusLast: $('#status-last'), statusSessions: $('#status-sessions'),
   btnDisconnect: $('#btn-disconnect'),
+  btnBulk: $('#btn-bulk'),
 
   settingsModal: $('#settings-modal'),
   unlockModal: $('#unlock-modal'),
@@ -150,24 +153,37 @@ const dom = {
 // Editor/bulk carry .modal-instant and toggle instantly (frequent work
 // surfaces). Reduced-motion users get instant toggles, no timers.
 const modalCloseTimers = new WeakMap();
+const modalStack = [];             // open order → Escape closes topmost first
+const modalReturnFocus = new WeakMap(); // trigger element per modal
 
 function modalPrefersReduced() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-function openModal(el) {
+function openModal(el, trigger) {
   if (modalCloseTimers.has(el)) {
     clearTimeout(modalCloseTimers.get(el));
     modalCloseTimers.delete(el);
   }
   el.classList.remove('closing');
+  // Track open order (dedupe so a reopen mid-close doesn't double-push)
+  if (!modalStack.includes(el)) modalStack.push(el);
+  // Remember the element that had focus so we can return it on close
+  const t = trigger || document.activeElement;
+  if (t && t !== document.body && t !== document.documentElement) {
+    modalReturnFocus.set(el, t);
+  }
   el.style.display = 'flex';
   if (el.classList.contains('modal-instant') || modalPrefersReduced()) {
     el.classList.add('open');
-    return;
+  } else {
+    void el.offsetWidth; // reflow so the entry transition actually fires
+    el.classList.add('open');
   }
-  void el.offsetWidth; // reflow so the entry transition actually fires
-  el.classList.add('open');
+  // Move focus into the dialog: the header (title) is the programmatic
+  // focus target so screen readers announce the dialog name.
+  const header = el.querySelector('.modal-header');
+  if (header) header.focus();
 }
 
 function closeModal(el) {
@@ -178,15 +194,27 @@ function closeModal(el) {
     clearTimeout(modalCloseTimers.get(el));
     modalCloseTimers.delete(el);
   }
+  // Pop from the open-order stack
+  const si = modalStack.indexOf(el);
+  if (si !== -1) modalStack.splice(si, 1);
   el.classList.remove('open');
-  if (el.classList.contains('modal-instant') || modalPrefersReduced()) {
+  const finish = () => {
+    el.classList.remove('closing');
     el.style.display = 'none';
+    // Return focus to the triggering button (keyboard dialog behavior)
+    const target = modalReturnFocus.get(el);
+    modalReturnFocus.delete(el);
+    if (target && target.isConnected && typeof target.focus === 'function') {
+      target.focus();
+    }
+  };
+  if (el.classList.contains('modal-instant') || modalPrefersReduced()) {
+    finish();
     return;
   }
   el.classList.add('closing');
   modalCloseTimers.set(el, setTimeout(() => {
-    el.classList.remove('closing');
-    el.style.display = 'none';
+    finish();
     modalCloseTimers.delete(el);
   }, 150));
 }
@@ -196,6 +224,7 @@ async function init() {
   await checkVaultStatus();
   if (State.vaultLocked) {
     openModal(dom.unlockModal);
+    dom.unlockPass.focus();
     updateClock();
     setInterval(updateClock, 1000);
     bindEvents();
@@ -364,6 +393,21 @@ function applySettings() {
   $('#setting-alert-cpu').value = s.alertCpu || 90;
   $('#setting-alert-mem').value = s.alertMem || 90;
   $('#setting-alert-disk').value = s.alertDisk || 90;
+  $('#setting-alert-net').value = s.alertNetMbps || 800;
+  // Sound file paths
+  if (s.alertSounds) {
+    const types = ['cpu', 'memory', 'disk', 'network', 'connectOk', 'connectFail'];
+    types.forEach(t => {
+      const el = $('#sound-' + t);
+      if (el) {
+        const path = (s.alertSounds[t] && s.alertSounds[t].file) || '';
+        el.value = path;
+        el.placeholder = path ? path.split(/[\\/]/).pop() : '(default beep)';
+        // Preload the file if it exists
+        if (path) loadSoundFile(t, path).catch(() => {});
+      }
+    });
+  }
 }
 
 async function saveSettingsAndClose() {
@@ -376,9 +420,18 @@ async function saveSettingsAndClose() {
     logLines: parseInt($('#setting-loglines').value) || 200,
     alertEnabled: $('#setting-alert-enabled').checked,
     alertSound: $('#setting-alert-sound').checked,
+    alertSounds: {
+      cpu:       { enabled: true, file: $('#sound-cpu').value || '' },
+      memory:    { enabled: true, file: $('#sound-memory').value || '' },
+      disk:      { enabled: true, file: $('#sound-disk').value || '' },
+      network:   { enabled: true, file: $('#sound-network').value || '' },
+      connectOk: { enabled: true, file: $('#sound-connectOk').value || '' },
+      connectFail: { enabled: true, file: $('#sound-connectFail').value || '' },
+    },
     alertCpu: parseInt($('#setting-alert-cpu').value) || 90,
     alertMem: parseInt($('#setting-alert-mem').value) || 90,
     alertDisk: parseInt($('#setting-alert-disk').value) || 90,
+    alertNetMbps: parseInt($('#setting-alert-net').value) || 800,
   };
   await fetch(`${API}/api/settings`, {
     method: 'POST',
@@ -566,14 +619,16 @@ async function connectToServer() {
     dom.keyStatus.className = 'key-status';
 
     dom.connectPanel.style.display = 'none';
-    dom.dashboard.style.display = 'flex';
+    dom.dashboardView.style.display = 'flex';
     scanSweep();
     dom.btnDisconnect.style.display = 'inline';
+    dom.btnBulk.style.display = 'inline';
     dom.statusConn.textContent = `LINK: ${username}@${host}`;
     dom.termHost.textContent = `ssh://${username}@${host}`;
     updateTabs();
     updateSessionCount();
 
+    playAlertSound('connectOk').catch(() => {});
     initTerminal(sessionId);
     startPolling(sessionId);
     refreshLogs(sessionId);
@@ -583,6 +638,7 @@ async function connectToServer() {
     dom.connectStatus.textContent = `ERROR: ${err.message}`;
     dom.connectStatus.style.color = 'var(--red)';
     dom.connectBtn.disabled = false;
+    playAlertSound('connectFail').catch(() => {});
   }
 }
 
@@ -621,10 +677,11 @@ async function disconnectSession(sessionId) {
       State.activeSession = null;
       State.history = { cpu: [], mem: [], disk: [], netTx: [], netRx: [] };
       State.prevNetRx = null; State.prevNetTx = null;
-      dom.dashboard.style.display = 'none';
+      dom.dashboardView.style.display = 'none';
       dom.connectPanel.style.display = 'flex';
       typeInTitle();
       dom.btnDisconnect.style.display = 'none';
+      dom.btnBulk.style.display = 'none';
       dom.statusConn.textContent = 'LINK: DISCONNECTED';
       dom.connectBtn.disabled = false;
       dom.headerUnit.textContent = 'UNIT // DISCONNECTED';
@@ -652,14 +709,34 @@ function updateTabs() {
   }
 
   dom.serverTabs.innerHTML = sessions.map(s => {
-    const active = s.sessionId === State.activeSession ? ' tab-active' : '';
-    return `<span class="server-tab${active}" data-sid="${s.sessionId}" title="${s.username}@${s.host}">[ ${s.label} ]</span>`;
+    const active = s.sessionId === State.activeSession;
+    return `<button type="button" class="server-tab${active ? ' tab-active' : ''}" data-sid="${s.sessionId}" title="${s.username}@${s.host}" aria-current="${active ? 'true' : 'false'}">[ ${s.label} ]</button>`;
   }).join('');
 
-  dom.serverTabs.querySelectorAll('.server-tab').forEach(tab => {
+  const serverTabs = Array.from(dom.serverTabs.querySelectorAll('.server-tab'));
+  serverTabs.forEach((tab, i) => {
     tab.addEventListener('click', () => {
       const sid = tab.dataset.sid;
       if (sid !== State.activeSession) switchToSession(sid);
+    });
+    // Keyboard access: arrows move between server tabs (wrap), Enter/Space
+    // activate via the native button click. Focus is restored after the
+    // re-render so keyboard users don't lose their place.
+    tab.addEventListener('keydown', (e) => {
+      const dir = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+      if (dir === undefined) {
+        if (e.key === 'Home') { e.preventDefault(); serverTabs[0].click(); }
+        else if (e.key === 'End') { e.preventDefault(); serverTabs[serverTabs.length - 1].click(); }
+        return;
+      }
+      e.preventDefault();
+      const next = serverTabs[(i + dir + serverTabs.length) % serverTabs.length];
+      next.focus();
+      next.click();
+      requestAnimationFrame(() => {
+        const active = dom.serverTabs.querySelector('.server-tab.tab-active');
+        if (active && document.activeElement !== active) active.focus();
+      });
     });
   });
 
@@ -787,39 +864,81 @@ async function fetchStats(sessionId) {
 let alertAudioCtx = null;
 let lastAlertBeep = 0;
 
-function getAlertAudio() {
+async function getAlertAudio() {
   if (!alertAudioCtx) {
     try {
       alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     } catch { return null; }
   }
   if (alertAudioCtx.state === 'suspended') {
-    alertAudioCtx.resume().catch(() => {});
+    try { await alertAudioCtx.resume(); } catch { /* user gesture required */ }
   }
   return alertAudioCtx;
 }
 
-function playAlertBeep() {
-  if (State.settings.alertSound === false) return;
-  const ctx = getAlertAudio();
-  if (!ctx) return;
-  // Coalesce multi-threshold breaches in the same poll into a single beep.
-  // Use wall-clock time (Date.now) — ctx.currentTime freezes while the
-  // AudioContext is suspended and starts at 0, which would suppress the first beep.
-  const wallNow = Date.now();
-  if (wallNow - lastAlertBeep < 1200) return;
-  lastAlertBeep = wallNow;
+// ── ALERT SOUND SYSTEM ───────────────────────────────────
+// Per-type alert sounds with file-backed custom audio and
+// synthesized fallback tones.
 
-  // Short tactical two-tone: 880 Hz → 1320 Hz square pulse.
-  // Tone scheduling runs on the audio timeline (ctx.currentTime, seconds).
+const ALERT_TONES = {
+  cpu:       { freqs: [880, 1320],   type: 'square', label: 'CPU Alert' },
+  memory:    { freqs: [660, 990],    type: 'square', label: 'Memory Alert' },
+  disk:      { freqs: [440, 660],    type: 'square', label: 'Disk Alert' },
+  network:   { freqs: [1100, 1650],  type: 'triangle', label: 'Network Alert' },
+  connectOk: { freqs: [523, 659, 784], type: 'sine', label: 'Connect OK' },
+  connectFail: { freqs: [200, 150],  type: 'sawtooth', label: 'Connect Fail' },
+};
+
+async function loadSoundFile(type, file) {
+  if (!file) return null;
+  try {
+    const res = await fetch('/api/sound?path=' + encodeURIComponent(file));
+    if (!res.ok) return null;
+    const arrayBuf = await res.arrayBuffer();
+    const ctx = await getAlertAudio();
+    if (!ctx) return null;
+    const audioBuf = await ctx.decodeAudioData(arrayBuf);
+    State.soundCache[type] = audioBuf;
+    return audioBuf;
+  } catch {
+    return null;
+  }
+}
+
+async function playAlertSound(type) {
+  const s = State.settings;
+  if (s.alertSound === false) return;
+  if (s.alertSounds && s.alertSounds[type] && s.alertSounds[type].enabled === false) return;
+
+  const ctx = await getAlertAudio();
+  if (!ctx) return;
+
+  // Debounce per-type: don't play same alert twice within 2s
+  const wallNow = Date.now();
+  if (State.lastAlertSound[type] && wallNow - State.lastAlertSound[type] < 2000) return;
+  State.lastAlertSound[type] = wallNow;
+
   const master = ctx.createGain();
-  master.gain.value = 0.12;
+  master.gain.value = 0.15;
   master.connect(ctx.destination);
+
+  // Check if we have a loaded AudioBuffer for this type
+  const buf = State.soundCache[type];
+  if (buf) {
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(master);
+    src.start(0);
+    return;
+  }
+
+  // Fallback: synthesized tone
+  const toneCfg = ALERT_TONES[type] || ALERT_TONES.cpu;
   const t0 = ctx.currentTime;
-  [880, 1320].forEach((freq, i) => {
+  toneCfg.freqs.forEach((freq, i) => {
     const toneAt = t0 + i * 0.16;
     const osc = ctx.createOscillator();
-    osc.type = 'square';
+    osc.type = toneCfg.type;
     osc.frequency.value = freq;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, toneAt);
@@ -831,6 +950,9 @@ function playAlertBeep() {
     osc.stop(toneAt + 0.15);
   });
 }
+
+// Backward compat
+function playAlertBeep() { playAlertSound('cpu').catch(() => {}); }
 
 // ── ALERT THRESHOLDS ─────────────────────────────────────
 function checkAlerts(data) {
@@ -849,7 +971,7 @@ function checkAlerts(data) {
       if (!State.alerts[key]) {
         State.alerts[key] = true;
         if (statBlock) statBlock.classList.add('alert-flash');
-        playAlertBeep();
+        playAlertSound(key).catch(() => {});
         fetch(`${API}/api/audit-log`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -867,6 +989,25 @@ function checkAlerts(data) {
   check(data.cpu, s.alertCpu, 'cpu', 'CPU');
   check(data.memory, s.alertMem, 'mem', 'Memory');
   check(data.disk, s.alertDisk, 'disk', 'Disk');
+
+  // Network throughput alert — fires if total throughput exceeds threshold in Mbps
+  if (data._netRxDelta != null && data._netTxDelta != null) {
+    const totalMbps = ((data._netRxDelta + data._netTxDelta) * 8) / 1_000_000;
+    const netThresh = s.alertNetMbps || 800;
+    const netBlock = $('#stat-net')?.closest('.stat-block');
+    if (totalMbps > netThresh) {
+      if (!State.alerts.network) {
+        State.alerts.network = true;
+        if (netBlock) netBlock.classList.add('alert-flash');
+        playAlertSound('network').catch(() => {});
+      }
+    } else {
+      if (State.alerts.network) {
+        State.alerts.network = false;
+        if (netBlock) netBlock.classList.remove('alert-flash');
+      }
+    }
+  }
 }
 
 // ── RESOURCE HISTORY CHARTS ──────────────────────────────
@@ -1069,26 +1210,58 @@ $('#svc-refresh').addEventListener('click', () => {
   if (State.activeSession) refreshServices(State.activeSession);
 });
 
+// ── ARIA TABS ─────────────────────────────────────────────
+// Shared tablist behavior for the three panel tab groups and the
+// auth toggle: roving tabindex, aria-selected sync, arrow-key +
+// Home/End navigation. onActivate(tab, tabName) switches content.
+function initTabGroup(scopeSel, onActivate) {
+  const tablist = document.querySelector(scopeSel);
+  if (!tablist) return;
+  const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+  if (!tabs.length) return;
+
+  const activate = (tab, focus = false) => {
+    tabs.forEach((t) => {
+      const active = t === tab;
+      t.classList.toggle('tab-active', active);
+      t.setAttribute('aria-selected', String(active));
+      t.tabIndex = active ? 0 : -1;
+    });
+    if (focus) tab.focus();
+    onActivate(tab, tab.dataset.tab);
+  };
+
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => activate(tab));
+    tab.addEventListener('keydown', (e) => {
+      const dir = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -1, ArrowDown: 1 }[e.key];
+      if (dir !== undefined) {
+        e.preventDefault();
+        activate(tabs[(i + dir + tabs.length) % tabs.length], true);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        activate(tabs[0], true);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        activate(tabs[tabs.length - 1], true);
+      }
+    });
+  });
+}
+
 // ── PROCESS MANAGER ──────────────────────────────────────
 function initProcessManager() {
-  const panelTabs = document.querySelectorAll('.panel-services .panel-tab');
-  panelTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const tabName = tab.dataset.tab;
-      panelTabs.forEach(t => t.classList.remove('tab-active'));
-      tab.classList.add('tab-active');
-      document.querySelectorAll('#tab-services, #tab-processes, #tab-ufw, #tab-docker').forEach(c => c.style.display = 'none');
-      $(`#tab-${tabName}`).style.display = 'block';
+  initTabGroup('.panel-services .panel-tabs', (tab, tabName) => {
+    document.querySelectorAll('#tab-services, #tab-processes, #tab-ufw, #tab-docker').forEach(c => c.style.display = 'none');
+    $(`#tab-${tabName}`).style.display = 'block';
 
-      const isProc = tabName === 'processes';
-      dom.svcCount.style.display = isProc ? 'none' : 'inline';
-      
-      dom.ufwCount.style.display = (tabName === 'ufw') ? 'inline' : 'none';
-      dom.ufwRefresh.style.display = (tabName === 'ufw') ? 'inline-block' : 'none';
-      if (isProc) refreshProcesses();
-      if (tabName === 'ufw') refreshUfw();
-      if (tabName === 'docker') refreshDocker();
-    });
+    const isProc = tabName === 'processes';
+    dom.svcCount.style.display = isProc ? 'none' : 'inline';
+    dom.ufwCount.style.display = (tabName === 'ufw') ? 'inline' : 'none';
+    dom.ufwRefresh.style.display = (tabName === 'ufw') ? 'inline-block' : 'none';
+    if (isProc) refreshProcesses();
+    if (tabName === 'ufw') refreshUfw();
+    if (tabName === 'docker') refreshDocker();
   });
 
   dom.procRefresh.addEventListener('click', () => refreshProcesses());
@@ -1215,21 +1388,15 @@ function renderProcessTable() {
 
 // ── FILE BROWSER ─────────────────────────────────────────
 function initFileBrowser() {
-  const panelTabs = document.querySelectorAll('.panel-logs .panel-tab');
-  panelTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const tabName = tab.dataset.tab;
-      panelTabs.forEach(t => t.classList.remove('tab-active'));
-      tab.classList.add('tab-active');
-      document.querySelectorAll('#tab-logs, #tab-files').forEach(c => c.style.display = 'none');
-      $(`#tab-${tabName}`).style.display = 'block';
+  initTabGroup('.panel-logs .panel-tabs', (tab, tabName) => {
+    document.querySelectorAll('#tab-logs, #tab-files').forEach(c => c.style.display = 'none');
+    $(`#tab-${tabName}`).style.display = 'block';
 
-      const isFiles = tabName === 'files';
-      dom.logActions.style.display = isFiles ? 'none' : 'flex';
-      dom.fileActions.style.display = isFiles ? 'flex' : 'none';
-      dom.filePathInfo.style.display = isFiles ? 'inline' : 'none';
-      if (isFiles) navigateTo(State.filePath);
-    });
+    const isFiles = tabName === 'files';
+    dom.logActions.style.display = isFiles ? 'none' : 'flex';
+    dom.fileActions.style.display = isFiles ? 'flex' : 'none';
+    dom.filePathInfo.style.display = isFiles ? 'inline' : 'none';
+    if (isFiles) navigateTo(State.filePath);
   });
 
   dom.fileHome.addEventListener('click', () => navigateTo('/'));
@@ -1309,7 +1476,7 @@ function renderFileTable() {
     const dateStr = f.mtime ? new Date(f.mtime).toISOString().replace('T', ' ').substring(0, 19) : '--';
     const perms = f.permissions || '----------';
     return `<tr>
-      <td><span class="file-name${nameClass}" data-path="${State.filePath.replace(/\/$/, '')}/${escapeAttr(f.name)}" data-isdir="${f.isDirectory}"><span class="file-icon">${icon}</span>${escapeHtml(f.name)}</span></td>
+      <td><span class="file-name${nameClass}" tabindex="-1" data-path="${State.filePath.replace(/\/$/, '')}/${escapeAttr(f.name)}" data-isdir="${f.isDirectory}"><span class="file-icon">${icon}</span>${escapeHtml(f.name)}</span></td>
       <td class="file-size">${sizeStr}</td>
       <td class="file-perms">${perms}</td>
       <td class="file-date">${dateStr}</td>
@@ -1331,9 +1498,9 @@ function renderFileTable() {
     el.addEventListener('click', () => navigateTo(el.dataset.path));
     el.style.cursor = 'pointer';
   });
-  // Double-click file names to open editor
+  // Double-click file names to open editor (row is the return-focus target)
   dom.fileTbody.querySelectorAll('.file-name:not(.dir):not(.symlink)').forEach(el => {
-    el.addEventListener('dblclick', () => openEditor(el.dataset.path));
+    el.addEventListener('dblclick', () => openEditor(el.dataset.path, el));
     el.style.cursor = 'pointer';
   });
 
@@ -1449,12 +1616,12 @@ function escapeAttr(str) {
 // ── TEXT FILE EDITOR ─────────────────────────────────────
 let editorFilePath = null;
 
-async function openEditor(filePath) {
+async function openEditor(filePath, triggerEl) {
   if (!State.activeSession) return;
   editorFilePath = filePath;
   dom.editorPath.textContent = filePath;
   dom.editorStatus.textContent = 'LOADING...';
-  openModal(dom.editorModal);
+  openModal(dom.editorModal, triggerEl);
   dom.editorTextarea.value = '';
   dom.editorTextarea.disabled = true;
 
@@ -1545,7 +1712,7 @@ async function refreshUfw() {
         '<td>' + escapeHtml(r.rule) + '</td>' +
         '<td class="ufw-action">' + r.action + '</td>' +
         '<td>' + escapeHtml(r.from) + '</td>' +
-        '<td><button class="file-btn del" data-ufw-del="' + r.number + '">X</button></td>' +
+        '<td><button class="file-btn del" data-ufw-del="' + r.number + '" aria-label="Delete rule ' + r.number + '">X</button></td>' +
       '</tr>';
     }).join('');
 
@@ -1685,7 +1852,7 @@ function openBulkExec() {
   dom.bulkStatus.textContent = 'READY';
   dom.bulkStatus.style.color = 'var(--fg-dim)';
   dom.bulkOutput.innerHTML = '<div class="empty-state">&gt;&gt; ENTER A COMMAND AND CLICK RUN</div>';
-  openModal(dom.bulkModal);
+  openModal(dom.bulkModal, dom.btnBulk);
   dom.bulkCommand.focus();
 }
 
@@ -1824,25 +1991,19 @@ function initTerminal(sessionId) {
 // ── AUDIT LOG ────────────────────────────────────────────
 function initAuditLog() {
   // Tab switching - scoped to sysinfo panel only
-  const tabs = document.querySelectorAll('.panel-sysinfo .panel-tab');
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const tabName = tab.dataset.tab;
-      tabs.forEach(t => t.classList.remove('tab-active'));
-      tab.classList.add('tab-active');
-      document.querySelectorAll('#tab-sysinfo, #tab-audit, #tab-applog').forEach(c => c.style.display = 'none');
-      $(`#tab-${tabName}`).style.display = 'block';
-      // Show/hide audit controls
-      const isAudit = tabName === 'audit';
-      const isApplog = tabName === 'applog';
-      dom.auditCount.style.display = isAudit ? 'inline' : 'none';
-      dom.auditRefresh.style.display = isAudit ? 'inline-block' : 'none';
-      dom.auditClear.style.display = isAudit ? 'inline-block' : 'none';
-      dom.applogCount.style.display = isApplog ? 'inline' : 'none';
-      dom.applogRefresh.style.display = isApplog ? 'inline-block' : 'none';
-      if (isAudit) refreshAuditLog();
-      if (isApplog) refreshAppLog();
-    });
+  initTabGroup('.panel-sysinfo .panel-tabs', (tab, tabName) => {
+    document.querySelectorAll('#tab-sysinfo, #tab-audit, #tab-applog').forEach(c => c.style.display = 'none');
+    $(`#tab-${tabName}`).style.display = 'block';
+    // Show/hide audit controls
+    const isAudit = tabName === 'audit';
+    const isApplog = tabName === 'applog';
+    dom.auditCount.style.display = isAudit ? 'inline' : 'none';
+    dom.auditRefresh.style.display = isAudit ? 'inline-block' : 'none';
+    dom.auditClear.style.display = isAudit ? 'inline-block' : 'none';
+    dom.applogCount.style.display = isApplog ? 'inline' : 'none';
+    dom.applogRefresh.style.display = isApplog ? 'inline-block' : 'none';
+    if (isAudit) refreshAuditLog();
+    if (isApplog) refreshAppLog();
   });
 
   dom.auditRefresh.addEventListener('click', refreshAuditLog);
@@ -1933,6 +2094,8 @@ function setAuthMethod(method) {
   dom.authKeyBtn.classList.toggle('active', method === 'key');
   dom.authPwBtn.setAttribute('aria-selected', String(method === 'password'));
   dom.authKeyBtn.setAttribute('aria-selected', String(method === 'key'));
+  dom.authPwBtn.tabIndex = method === 'password' ? 0 : -1;
+  dom.authKeyBtn.tabIndex = method === 'key' ? 0 : -1;
   dom.authPwGroup.style.display = method === 'password' ? 'block' : 'none';
   dom.authKeyGroup.style.display = method === 'key' ? 'block' : 'none';
 }
@@ -1961,6 +2124,9 @@ function bindEvents() {
       dom.unlockPass.value = '';
       await loadSettings();
       await loadProfiles();
+      // Land keyboard focus on the connect form (profile picker first)
+      if (dom.profileSelect.options.length > 1) dom.profileSelect.focus();
+      else dom.connHost.focus();
     } catch (err) {
       dom.unlockError.textContent = err.message || 'INCORRECT PASSWORD';
       dom.unlockError.style.display = 'block';
@@ -1973,9 +2139,10 @@ function bindEvents() {
     if (e.key === 'Enter') dom.unlockBtn.click();
   });
 
-  // Auth method toggle
-  dom.authPwBtn.addEventListener('click', () => setAuthMethod('password'));
-  dom.authKeyBtn.addEventListener('click', () => setAuthMethod('key'));
+  // Auth method toggle (role=tablist with arrow-key nav + roving tabindex)
+  initTabGroup('.auth-toggle', (tab, tabName) => {
+    setAuthMethod(tabName === 'key' ? 'key' : 'password');
+  });
 
   // Key file upload
   dom.keyLoadFile.addEventListener('click', () => dom.keyFileInput.click());
@@ -1998,9 +2165,11 @@ function bindEvents() {
   });
 
   $('#btn-settings').addEventListener('click', () => {
-    openModal(dom.settingsModal);
+    openModal(dom.settingsModal, $('#btn-settings'));
     applySettings();
   });
+
+  $('#btn-bulk').addEventListener('click', openBulkExec);
 
   $('#settings-close').addEventListener('click', () => {
     closeModal(dom.settingsModal);
@@ -2014,7 +2183,54 @@ function bindEvents() {
   // Alert sound test button (user gesture unlocks the AudioContext)
   $('#alert-sound-test').addEventListener('click', () => {
     State.settings.alertSound = $('#setting-alert-sound').checked;
-    playAlertBeep();
+    playAlertSound('cpu');
+  });
+
+  // Per-type sound file pickers
+  document.querySelectorAll('.sound-load').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.type;
+      const input = document.querySelector('.sound-file-input[data-type="' + type + '"]');
+      if (input) input.click();
+    });
+  });
+
+  document.querySelectorAll('.sound-file-input').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      const type = input.dataset.type;
+      const pathEl = $('#sound-' + type);
+      if (!file || !pathEl) return;
+      pathEl.value = file.path;
+      pathEl.placeholder = file.name;
+      // Load into cache
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const ctx = getAlertAudio();
+          if (!ctx) return;
+          const audioBuf = await ctx.decodeAudioData(ev.target.result);
+          State.soundCache[type] = audioBuf;
+        } catch {}
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  });
+
+  document.querySelectorAll('.sound-clear').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.type;
+      const pathEl = $('#sound-' + type);
+      if (pathEl) { pathEl.value = ''; pathEl.placeholder = '(default beep)'; }
+      delete State.soundCache[type];
+    });
+  });
+
+  document.querySelectorAll('.sound-test').forEach(btn => {
+    btn.addEventListener('click', () => {
+      State.settings.alertSound = true;
+      playAlertSound(btn.dataset.type);
+    });
   });
 
   // Master password settings
@@ -2084,9 +2300,12 @@ function bindEvents() {
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (dom.editorModal.style.display === 'flex') { closeEditor(); return; }
-      if (dom.bulkModal.style.display === 'flex') { closeModal(dom.bulkModal); return; }
-      closeModal(dom.settingsModal);
+      // Escape-first-close: topmost modal in open order closes first.
+      // The unlock gate is a boot screen — never dismissible via Escape.
+      const top = modalStack[modalStack.length - 1];
+      if (!top || top === dom.unlockModal) return;
+      if (top === dom.editorModal) { closeEditor(); return; }
+      closeModal(top);
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       if (dom.editorModal.style.display === 'flex') { e.preventDefault(); saveEditorFile(); }
@@ -2124,7 +2343,7 @@ function bindEvents() {
       });
       ipcRenderer.on('menu:new-connection', () => {
         if (State.activeSession) disconnectSession(State.activeSession);
-        dom.dashboard.style.display = 'none';
+        dom.dashboardView.style.display = 'none';
         dom.connectPanel.style.display = 'flex';
         typeInTitle();
       });

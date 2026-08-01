@@ -448,7 +448,7 @@ GitHub Actions workflows are included:
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| `ci.yml` | Push to `main`, pull requests | Syntax-checks all source files, runs the server smoke test, verifies the app packages on Windows, macOS, and Linux, and checks docs TOC anchors + relative links |
+| `ci.yml` | Push to `main`, pull requests | Rejects commit messages with AI attribution footers, syntax-checks all source files, runs the server smoke test, verifies the app packages on Windows, macOS, and Linux, and checks docs TOC anchors + relative links |
 | `links.yml` | Weekly schedule (Mon 06:00 UTC), manual dispatch | Probes every http/https link in the docs with a live HEAD request (GET fallback) so dead external URLs fail CI |
 | `release.yml` | Push tag `v*` | Gates on docs freshness, builds all platform installers, verifies signatures (when signing secrets are configured), and publishes a GitHub Release with release notes + auto-update feeds |
 

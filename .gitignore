@@ -13,3 +13,10 @@ app-error.log
 
 # Local dev tooling
 .freebuff/
+
+# Internal scratchpad (see CLAUDE.md workflow rule) + superpowers tooling guard
+TODO.md
+.superpowers/
+
+# Automated audit reports (regenerated each run)
+reports/

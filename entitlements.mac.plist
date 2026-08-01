@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- V8/Chromium JIT — required for Electron to run under hardened runtime -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- JIT-compiled code regions (V8/WebAssembly); prevents launch crashes on arm64 -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Chromium loader needs DYLD env vars (e.g. ELECTRON_RUN_AS_NODE) -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    <!-- Electron ships unsigned helper frameworks; required or the app aborts at launch -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Read/write access to files the user explicitly selects via open/save dialogs
+         (VPS Commander's SFTP upload/download flows). NOTE: the app is NOT sandboxed,
+         so this key is currently inert — kept per project policy. If App Sandbox is
+         ever enabled, also add com.apple.security.network.client (SSH) and
+         com.apple.security.files.downloads.read-write (a.click() download flow). -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+  </dict>
+</plist>

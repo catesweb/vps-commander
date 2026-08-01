@@ -1,7 +1,13 @@
 const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
 const path = require('path');
-const { fork, execSync } = require('child_process');
+const { fork, execSync, execFileSync } = require('child_process');
 const appLogger = require('./app-logger');
+
+// Auto-update via GitHub Releases (electron-updater).
+// Guarded by app.isPackaged so dev mode (`npm start`) never self-updates.
+let autoUpdater = null;
+let updatePromptShown = false;
+let restartDialogOpen = false;
 
 let mainWindow = null;
 let splashWindow = null;
@@ -110,6 +116,157 @@ function createSplashWindow() {
   });
 }
 
+// macOS only: self-update requires a valid Developer ID signature. Check the
+// running binary's signature directly (future-proof if signing is added to CI).
+let macSignedCache = null;
+function isMacAppSigned() {
+  if (macSignedCache !== null) return macSignedCache;
+  if (process.platform !== 'darwin') return true;
+  try {
+    // execFileSync (no shell) so the app-bundle path can never be shell-interpreted.
+    execFileSync('codesign', ['--verify', process.execPath], { timeout: 5000, stdio: 'ignore' });
+    macSignedCache = true;
+  } catch {
+    macSignedCache = false;
+  }
+  return macSignedCache;
+}
+
+function setupAutoUpdater() {
+  if (!app.isPackaged) {
+    appLogger.log({ source: 'UPDATER', level: 'INFO', message: 'Auto-update disabled (dev mode)' });
+    return;
+  }
+
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (err) {
+    appLogger.log({ source: 'UPDATER', level: 'ERROR', message: 'Failed to load electron-updater: ' + err.message });
+    return;
+  }
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = {
+    info: (msg) => appLogger.log({ source: 'UPDATER', level: 'INFO', message: updaterLogMsg(msg) }),
+    warn: (msg) => appLogger.log({ source: 'UPDATER', level: 'WARN', message: updaterLogMsg(msg) }),
+    error: (msg) => appLogger.log({ source: 'UPDATER', level: 'ERROR', message: updaterLogMsg(msg) }),
+  };
+
+  autoUpdater.on('checking-for-update', () => {
+    appLogger.log({ source: 'UPDATER', level: 'INFO', message: 'Checking for updates' });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    const version = info?.version || '? ';
+    appLogger.log({ source: 'UPDATER', level: 'INFO', message: `Update available: v${version}` });
+    // macOS unsigned builds can't self-update; degrade to a release-link prompt.
+    if (process.platform === 'darwin' && !isMacAppSigned()) {
+      promptOpenRelease(version);
+      return;
+    }
+    promptDownload(version);
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    appLogger.log({ source: 'UPDATER', level: 'INFO', message: 'No update available' });
+  });
+
+  let lastLoggedPct = -1;
+  autoUpdater.on('download-progress', (progress) => {
+    const pct = Math.round(progress?.percent || 0);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setProgressBar(progress?.percent ? progress.percent / 100 : -1);
+    }
+    // Throttle disk writes — progress fires many times per second.
+    const bucket = Math.floor(pct / 10);
+    if (bucket !== lastLoggedPct) {
+      lastLoggedPct = bucket;
+      appLogger.log({ source: 'UPDATER', level: 'INFO', message: `Downloading update: ${pct}%` });
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    const version = info?.version || '? ';
+    appLogger.log({ source: 'UPDATER', level: 'INFO', message: `Update downloaded: v${version}` });
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setProgressBar(-1);
+    promptRestart(version);
+  });
+
+  autoUpdater.on('error', (err) => {
+    appLogger.log({ source: 'UPDATER', level: 'ERROR', message: 'Update error: ' + err.message, extra: { code: err.code } });
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setProgressBar(-1);
+  });
+
+  // Check shortly after startup so the splash/main window aren't delayed.
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      appLogger.log({ source: 'UPDATER', level: 'ERROR', message: 'Update check failed: ' + err.message });
+    });
+  }, 5000);
+}
+
+function updaterLogMsg(msg) {
+  if (typeof msg === 'string') return msg;
+  try { return JSON.stringify(msg); } catch { return String(msg); }
+}
+
+function promptDownload(version) {
+  if (updatePromptShown) return;
+  updatePromptShown = true;
+  dialog.showMessageBox(mainWindow || undefined, {
+    type: 'info',
+    title: 'Update Available',
+    message: `VPS Commander v${version} is available`,
+    detail: 'A new version is ready to download. Install it now?',
+    buttons: ['Download & Install', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+  }).then(({ response }) => {
+    if (response === 0) {
+      autoUpdater.downloadUpdate().catch((err) => {
+        appLogger.log({ source: 'UPDATER', level: 'ERROR', message: 'Update download failed: ' + err.message });
+        dialog.showErrorBox('Update Failed', 'Could not download the update.\n\n' + err.message);
+      });
+    }
+  }).catch(() => {});
+}
+
+function promptRestart(version) {
+  if (restartDialogOpen) return;
+  restartDialogOpen = true;
+  dialog.showMessageBox(mainWindow || undefined, {
+    type: 'info',
+    title: 'Update Ready',
+    message: `VPS Commander v${version} has been downloaded`,
+    detail: 'Restart now to finish installing the update?',
+    buttons: ['Restart Now', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+  }).then(({ response }) => {
+    restartDialogOpen = false;
+    if (response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  }).catch(() => { restartDialogOpen = false; });
+}
+
+function promptOpenRelease(version) {
+  if (updatePromptShown) return;
+  updatePromptShown = true;
+  dialog.showMessageBox(mainWindow || undefined, {
+    type: 'info',
+    title: 'Update Available',
+    message: `VPS Commander v${version} is available`,
+    detail: 'Auto-update is not supported on this build (unsigned macOS app).\n\nOpen the GitHub Releases page to download it manually?',
+    buttons: ['Open Releases', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+  }).then(({ response }) => {
+    if (response === 0) shell.openExternal('https://github.com/catesweb/vps-commander/releases');
+  }).catch(() => {});
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -180,8 +337,19 @@ const menuTemplate = [
   {
     label: 'Help',
     submenu: [
-      { label: 'About VPS Commander', click: () => dialog.showMessageBox(mainWindow, { title: 'VPS Commander', message: 'VPS Commander v1.0.0\n\nTactical telemetry for remote server management.\n\nBuilt with Electron + Node.js + xterm.js', type: 'info' }) },
-      { label: 'Documentation', click: () => shell.openExternal('https://github.com/vps-commander') },
+      { label: 'About VPS Commander', click: () => dialog.showMessageBox(mainWindow, { title: 'VPS Commander', message: `VPS Commander v${app.getVersion()}\n\nTactical telemetry for remote server management.\n\nBuilt with Electron + Node.js + xterm.js`, type: 'info' }) },
+      { label: 'Check for Updates…', click: () => {
+        if (!autoUpdater) {
+          dialog.showMessageBox(mainWindow, { type: 'info', message: 'Auto-update is only available in packaged builds.', detail: 'Run `npm run build:win` (or mac/linux) and install the build to receive updates.' });
+          return;
+        }
+        updatePromptShown = false;
+        autoUpdater.checkForUpdates().catch((err) => {
+          appLogger.log({ source: 'UPDATER', level: 'ERROR', message: 'Manual update check failed: ' + err.message });
+          dialog.showErrorBox('Update Check Failed', err.message || 'Could not check for updates.');
+        });
+      } },
+      { label: 'Documentation', click: () => shell.openExternal('https://github.com/catesweb/vps-commander') },
     ],
   },
 ];
@@ -205,6 +373,7 @@ app.whenReady().then(async () => {
   const menu = Menu.buildFromTemplate(menuTemplate);
   Menu.setApplicationMenu(menu);
   createWindow();
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

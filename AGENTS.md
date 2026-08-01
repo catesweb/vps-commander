@@ -171,3 +171,6 @@ From the animation decision framework — rare, delightful motion only:
 - **Never add contributors.** Do not add `Co-Authored-By:` trailers, "Generated
   with …" lines, or any AI/tool attribution to commits, PRs, or other repo
   content. Only the repository owner is ever listed as a contributor.
+- **CI-enforced**: the `commit-lint` job in `.github/workflows/ci.yml` greps
+  pushed/PR commit messages for attribution footers and fails the workflow if
+  any are found — never bypass it by editing a message after the fact.

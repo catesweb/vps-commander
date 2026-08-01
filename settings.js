@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   alertCpu: 90,
   alertMem: 90,
   alertDisk: 90,
+  alertNetMbps: 800,
   logPresets: [
     '/var/log/syslog',
     '/var/log/auth.log',

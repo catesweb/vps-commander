@@ -749,6 +749,30 @@ app.delete('/api/profiles/:id', requireUnlocked, (req, res) => {
   res.json(result);
 });
 
+// ── Sound API ────────────────────────────────────────────
+app.get('/api/sound', (req, res) => {
+  const filePath = req.query.path;
+  if (!filePath) return res.status(400).json({ error: 'path required' });
+  // Only allow audio files from common paths
+  if (!/\.(wav|mp3|ogg|m4a|aac|flac|weba)$/i.test(filePath)) {
+    return res.status(400).json({ error: 'Invalid audio file type' });
+  }
+  if (filePath.includes('..')) return res.status(400).json({ error: 'Path traversal blocked' });
+  try {
+    const fs = require('fs');
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    const ext = filePath.split('.').pop().toLowerCase();
+    const mimeMap = { wav: 'audio/wav', mp3: 'audio/mpeg', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm' };
+    const contentType = mimeMap[ext] || 'audio/mpeg';
+    const data = fs.readFileSync(filePath);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', data.length);
+    res.send(data);
+  } catch {
+    res.status(500).json({ error: 'Failed to read audio file' });
+  }
+});
+
 // ── Error Log API ────────────────────────────────────────
 app.get('/api/error-log', (req, res) => {
   const lines = parseInt(req.query.lines) || 200;
