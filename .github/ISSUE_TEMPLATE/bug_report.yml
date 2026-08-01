@@ -1,0 +1,88 @@
+name: 🐛 Bug report
+description: Report a bug or unexpected behavior in VPS Commander
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as you can — the app writes logs to `~/.vps-commander/` that usually contain the root cause.
+
+  - type: input
+    id: version
+    attributes:
+      label: VPS Commander version
+      description: Help → About, or the version printed on the splash screen
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      description: Where are you running the desktop app?
+      multiple: false
+      options:
+        - Windows
+        - macOS
+        - Linux
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: vps-os
+    attributes:
+      label: VPS OS / distro
+      description: The OS of the server you're connected to (if relevant)
+      placeholder: e.g. Ubuntu 22.04, Debian 12, CentOS 9
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear, concise description of the bug and what you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps — be specific (which panel/tab/button, which action)
+      placeholder: |
+        1. Connect to a VPS
+        2. Open the Services → DOCKER tab
+        3. Click "Restart" on a container
+        4. See error…
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs & error messages
+      description: Paste the exact error text, plus anything from `~/.vps-commander/app-error.log` or `audit.log`. Redact hostnames, IPs, and credentials.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate
+          required: true
+        - label: I'm on the latest release and the bug still occurs
+          required: false
+        - label: This is not a security vulnerability (those go to repo → Security → Report a vulnerability)
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Note:** this project is single-maintainer. Please don't add AI/Co-Authored-By attribution to your report.

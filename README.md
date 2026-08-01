@@ -19,7 +19,7 @@ A cross-platform Electron desktop application for monitoring and controlling clo
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Feature Deep-Dive](#feature-deep-dive)
 - [Configuration](#configuration)
-- [Profiles & Vault Security](#profiles--vault-security)
+- [Profiles & Vault Security](#profiles-vault-security)
 - [REST API](#rest-api)
 - [WebSocket Protocol](#websocket-protocol)
 - [Security Architecture](#security-architecture)
@@ -82,7 +82,7 @@ A cross-platform Electron desktop application for monitoring and controlling clo
 - **Machine key** fallback: auto-derived from hostname/username
 - Rate limiting on `/api/connect` (10 requests per 15 seconds)
 - Input sanitization: regex validation on all user inputs (paths, service names, PIDs, Docker IDs, UFW rules)
-- Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, CSP
+- Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, CSP
 - Passwords/keys cleared from DOM after connection
 - `ssh2.exec()` runs without local shell — no shell injection
 
@@ -119,7 +119,7 @@ A cross-platform Electron desktop application for monitoring and controlling clo
 │  public/index.html — Single-page dashboard        │
 │  public/js/app.js — All UI logic                  │
 │  public/css/styles.css — Brutalist design system  │
-│  xterm.js — Terminal emulation (CDN loaded)       │
+│  xterm.js — Terminal emulation (vendored)         │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -146,12 +146,12 @@ A cross-platform Electron desktop application for monitoring and controlling clo
 
 ### Download Pre-built Binary
 
-Download the latest release for your platform from the [Releases](https://github.com/vps-commander/vps-commander/releases) page:
+Download the latest release for your platform from the [Releases](https://github.com/catesweb/vps-commander/releases) page:
 
 | Platform | File |
 |----------|------|
 | Windows | `VPS Commander Setup *.exe` (NSIS installer) or `*.exe` (portable) |
-| macOS | `*.dmg` |
+| macOS | `*.dmg` or `*.zip` |
 | Linux | `*.AppImage` or `*.deb` |
 
 > Auto-update works with the **NSIS installer**, **DMG/ZIP**, and **AppImage** builds. The Windows *portable* `.exe` does not self-update (electron-updater limitation) — use the installer to receive updates.
@@ -161,7 +161,7 @@ Download the latest release for your platform from the [Releases](https://github
 ## Build from Source
 
 ```bash
-git clone https://github.com/vps-commander/vps-commander.git
+git clone https://github.com/catesweb/vps-commander.git
 cd vps-commander
 npm install
 npm start          # Launch the Electron app
@@ -171,7 +171,7 @@ npm start          # Launch the Electron app
 
 ```bash
 npm run build:win    # Windows (.exe) — NSIS installer + portable
-npm run build:mac    # macOS (.dmg)
+npm run build:mac    # macOS (.dmg + .zip)
 npm run build:linux  # Linux (.AppImage, .deb)
 ```
 
@@ -271,9 +271,11 @@ Settings are stored in `~/.vps-commander/settings.json`. All values are configur
 | `auditLog` | `true` | Enable audit logging |
 | `alertEnabled` | `true` | Enable alert thresholds |
 | `alertSound` | `true` | Play alert sound |
+| `alertSounds` | `{...}` | Per-alert-type toggles + optional custom audio files (cpu, memory, disk, network, connectOk, connectFail) |
 | `alertCpu` | `90` | CPU alert threshold (%) |
 | `alertMem` | `90` | Memory alert threshold (%) |
 | `alertDisk` | `90` | Disk alert threshold (%) |
+| `alertNetMbps` | `800` | Network throughput alert threshold (Mbps) |
 | `logPresets` | `[...]` | Default log files to tail |
 
 ---
@@ -446,8 +448,9 @@ GitHub Actions workflows are included:
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| `ci.yml` | Push to `main`, pull requests | Syntax-checks all source files, runs the server smoke test, and verifies the app packages on Windows, macOS, and Linux |
-| `release.yml` | Push tag `v*` | Builds all platform installers, uploads them, and publishes a GitHub Release with release notes + auto-update feeds |
+| `ci.yml` | Push to `main`, pull requests | Syntax-checks all source files, runs the server smoke test, verifies the app packages on Windows, macOS, and Linux, and checks docs TOC anchors + relative links |
+| `links.yml` | Weekly schedule (Mon 06:00 UTC), manual dispatch | Probes every http/https link in the docs with a live HEAD request (GET fallback) so dead external URLs fail CI |
+| `release.yml` | Push tag `v*` | Gates on docs freshness, builds all platform installers, verifies signatures (when signing secrets are configured), and publishes a GitHub Release with release notes + auto-update feeds |
 
 To publish a release:
 
@@ -467,22 +470,33 @@ The release workflow builds `.exe` (Windows), `.dmg` + `.zip` (macOS), and `.App
 ## Project Structure
 
 ```
-├── main.js            # Electron entry: window, lifecycle, menu
-├── server.js          # Express REST API + WebSocket terminal + security middleware
-├── ssh-handler.js     # SSH connection pool, exec/shell/sftp, all remote commands
-├── settings.js        # JSON config persistence, profile storage, audit logging
-├── crypto-util.js     # AES-256-GCM encryption with PBKDF2 key derivation
-├── app-logger.js      # Rotating error log (5MB) in ~/.vps-commander/
+├── main.js                 # Electron entry: window, lifecycle, menu
+├── server.js               # Express REST API + WebSocket terminal + security middleware
+├── ssh-handler.js          # SSH connection pool, exec/shell/sftp, all remote commands
+├── settings.js             # JSON config persistence, profile storage, audit logging
+├── crypto-util.js          # AES-256-GCM encryption with PBKDF2 key derivation
+├── app-logger.js           # Rotating error log (5MB) in ~/.vps-commander/
+├── entitlements.mac.plist  # macOS hardened-runtime entitlements
+├── knowledge.md            # Project knowledge base
+├── AGENTS.md / CLAUDE.md   # Agent guardrails (design system, workflow rules)
+├── CONTRIBUTING.md         # Contribution guide
+├── CODEOWNERS              # Single-maintainer ownership
 ├── public/
-│   ├── index.html     # Dashboard layout, modals, forms
-│   ├── splash.html    # Startup splash screen
-│   ├── js/app.js      # All frontend logic: state, DOM, polling, charts, panels
-│   ├── css/styles.css # Brutalist dark design system
-│   └── icon.png/ico   # Generated app icons
+│   ├── index.html          # Dashboard layout, modals, forms
+│   ├── splash.html         # Startup splash screen
+│   ├── js/app.js           # All frontend logic: state, DOM, polling, charts, panels
+│   ├── css/styles.css      # Brutalist dark design system
+│   ├── vendor/             # Vendored xterm.js + fonts (no CDN)
+│   └── icon.png/ico        # Generated app icons
 ├── scripts/
-│   ├── generate-icon.js # Icon generator (PNG/ICO)
-│   └── smoke-test.js    # CI server boot test
-└── .github/workflows/ # GitHub Actions CI + release pipelines
+│   ├── generate-icon.js    # Icon generator (PNG/ICO)
+│   ├── a11y-audit.js       # Accessibility audit (npm run a11y)
+│   └── smoke-test.js       # CI server boot test
+├── docs/
+│   └── SIGNING.md          # Code-signing & notarization guide
+└── .github/
+    ├── workflows/          # GitHub Actions CI + release pipelines
+    └── ISSUE_TEMPLATE/     # Bug report + feature request forms
 ```
 
 ---

@@ -1,0 +1,11 @@
+# CODEOWNERS
+# This project is single-maintainer: the repository owner owns every path.
+# Pull requests touching any file require approval from the owner.
+# Note: this file affects branch protection / required reviews only when
+# CODEOWNERS review is enabled in the repo settings.
+
+* @catesweb
+
+# CI and release pipelines are owned explicitly so workflow changes always
+# get an owner review before they can be merged.
+.github/ @catesweb

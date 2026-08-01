@@ -9,11 +9,18 @@
  *   2. Every relative link (`file.md`, `file.md#anchor`, `../docs/x.md`) points
  *      at an existing file, and if it carries a fragment, that the fragment
  *      resolves to a heading in the target file.
- *   3. External URLs (http/https/mailto/data) are passed over silently — they
- *      need the network, not a lint.
+ *   3. External URLs (mailto/tel/data) are passed over silently. http/https
+ *      links are skipped by default (fast, offline push check) but are probed
+ *      live when run with `--external` — a HEAD request per URL with a GET
+ *      fallback for servers that reject HEAD. Intended for the scheduled
+ *      `links` workflow, not the per-push `docs` job.
+ *
+ * Usage:
+ *   node scripts/docs-freshness.js             # offline: anchors + relative links
+ *   node scripts/docs-freshness.js --external  # + live HEAD/GET probe of http(s) links
  *
  * Fails (exit 1) on any drift so CI breaks instead of shipping stale docs.
- * No dependencies — plain Node, runnable with `node scripts/docs-freshness.js`.
+ * No dependencies — plain Node (global fetch), runnable with node >= 18.
  */
 
 'use strict';
@@ -95,6 +102,100 @@ function isExternal(url) {
   return /^(https?:|mailto:|tel:|data:|\/\/)/i.test(url);
 }
 
+// ---------------------------------------------------------------------------
+// External link probing (--external)
+// ---------------------------------------------------------------------------
+
+const CHECK_EXTERNAL = process.argv.includes('--external');
+const EXTERNAL_UA = 'docs-freshness-check (VPS Commander repo maintainer)';
+const EXTERNAL_TIMEOUT_MS = 15000;
+const EXTERNAL_CONCURRENCY = 8;
+
+/** Collects unique http/https URLs referenced from any doc, mapped to the
+ *  files that mention them. Fragments and non-http schemes are skipped. */
+function collectExternalLinks(files) {
+  const urlMap = new Map(); // url -> Set of files referencing it
+  for (const abs of files) {
+    const rel = path.relative(ROOT, abs).split(path.sep).join('/');
+    const md = fs.readFileSync(abs, 'utf8');
+    for (const url of collectLinks(md)) {
+      if (!/^https?:\/\//i.test(url)) continue;
+      const clean = url.split('#')[0]; // fragments are client-side, not probed
+      if (!urlMap.has(clean)) urlMap.set(clean, new Set());
+      urlMap.get(clean).add(rel);
+    }
+  }
+  return urlMap;
+}
+
+/** Probes one URL: HEAD first, GET fallback when HEAD is rejected or errors. */
+async function probeUrl(url) {
+  const attempt = async (method) => {
+    const res = await fetch(url, {
+      method,
+      redirect: 'follow',
+      headers: { 'User-Agent': EXTERNAL_UA },
+      signal: AbortSignal.timeout(EXTERNAL_TIMEOUT_MS),
+    });
+    if (res.body) await res.body.cancel(); // we only need the status line
+    return res.status;
+  };
+
+  // HEAD is the polite first try. Some servers reject it with a status
+  // (403/405/501) and some WAFs drop the connection outright — treat both as
+  // "needs the GET fallback" rather than marking the link dead.
+  let headStatus = null;
+  try {
+    headStatus = await attempt('HEAD');
+  } catch {
+    /* network error / timeout on HEAD — try GET before giving up */
+  }
+  if (headStatus !== null && headStatus < 400) {
+    return { ok: true, status: headStatus };
+  }
+
+  try {
+    const getStatus = await attempt('GET');
+    if (getStatus < 400) return { ok: true, status: getStatus };
+    if (getStatus === 429) return { ok: true, status: getStatus }; // throttled, not dead
+    return { ok: false, status: getStatus };
+  } catch (err) {
+    return { ok: false, error: (err.cause && err.cause.code) || err.name || String(err) };
+  }
+}
+
+/** Runs async work with a fixed-size worker pool (politeness to hosts). */
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/** Probes every external URL; returns failures and a summary. */
+async function checkExternalLinks(urlMap) {
+  const entries = [...urlMap];
+  const outcomes = await mapLimit(entries, EXTERNAL_CONCURRENCY, ([url]) => probeUrl(url));
+  const failures = [];
+  let ok = 0;
+  entries.forEach(([url, files], i) => {
+    const r = outcomes[i];
+    if (r.ok) {
+      ok++;
+      return;
+    }
+    const why = r.status ? `HTTP ${r.status}` : r.error;
+    failures.push(`${[...files].join(', ')}: dead external link "${url}" (${why})`);
+  });
+  return { failures, ok, total: entries.length };
+}
+
 function listMarkdownFiles(dir) {
   const out = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -109,7 +210,7 @@ function listMarkdownFiles(dir) {
 // ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
-function main() {
+async function main() {
   const files = listMarkdownFiles(ROOT);
   const failures = [];
   const stats = { files: 0, links: 0, filesChecked: 0, anchorsChecked: 0 };
@@ -178,8 +279,19 @@ function main() {
     }
   }
 
+  // External link probing — opt-in via --external (scheduled workflow only,
+  // so per-push CI stays fast and offline).
+  let externalStats = null;
+  if (CHECK_EXTERNAL) {
+    externalStats = await checkExternalLinks(collectExternalLinks(files));
+    failures.push(...externalStats.failures);
+  }
+
   console.log(`docs-freshness: ${stats.files} markdown files, ${stats.links} links checked`);
   console.log(`  files resolved: ${stats.filesChecked} | anchors resolved: ${stats.anchorsChecked}`);
+  if (externalStats) {
+    console.log(`  external links: ${externalStats.ok}/${externalStats.total} reachable`);
+  }
 
   if (failures.length) {
     console.error(`\n${failures.length} documentation drift issue(s):`);
@@ -187,7 +299,11 @@ function main() {
     process.exit(1);
   }
 
-  console.log('OK — all TOC anchors and relative links resolve.');
+  const mode = CHECK_EXTERNAL ? 'anchors, relative links, and external links' : 'TOC anchors and relative links';
+  console.log(`OK — all ${mode} resolve.`);
 }
 
-main();
+main().catch((err) => {
+  console.error(`docs-freshness: unexpected error: ${err && err.stack ? err.stack : err}`);
+  process.exit(1);
+});
