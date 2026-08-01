@@ -139,6 +139,8 @@ The workflow passes the secrets through, but electron-builder only notarizes whe
   "category": "public.app-category.utilities",
   "hardenedRuntime": true,
   "gatekeeperAssess": false,
+  "entitlements": "entitlements.mac.plist",
+  "entitlementsInherit": "entitlements.mac.plist",
   "notarize": {
     "teamId": "YOUR_TEAM_ID"
   }
@@ -178,7 +180,9 @@ env:
 
 ## 7. Verify a signed release
 
-After a tag build completes, check the release assets:
+> **CI enforces this automatically.** The `release.yml` workflow now verifies signatures on tag builds: Windows runs `Get-AuthenticodeSignature` on every `.exe` (must be `Valid`) and macOS runs `codesign --verify --deep --strict` plus `spctl -a -vv` (when notarization secrets are set) on the `.app` bundle — a broken/missing signature fails the release job before artifacts are uploaded. These checks only run when the corresponding signing secrets are configured, so fully unsigned (no-secrets) releases still pass.
+
+After a tag build completes, you can also check the release assets manually:
 
 **Windows** — right-click the `.exe` → Properties → Digital Signatures, or:
 

@@ -20,9 +20,9 @@
 ├─────────────────────────────────────────────────┤
 │              Frontend (SPA)                       │
 │  public/index.html — Single-page dashboard        │
-│  public/js/app.js — All UI logic (~2000 lines)   │
+│  public/js/app.js — All UI logic (~2390 lines)   │
 │  public/css/styles.css — Brutalist design system  │
-│  xterm.js — Terminal emulation (CDN loaded)       │
+│  xterm.js — Terminal emulation (vendored local)   │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -41,15 +41,16 @@
 
 | File | Role | Lines |
 |------|------|-------|
-| `main.js` | Electron entry point, window creation, app menu | ~100 |
-| `server.js` | Express REST API + WebSocket terminal + security middleware | ~660 |
-| `ssh-handler.js` | SSH connection pool, exec/shell/sftp, all remote commands | ~400 |
-| `settings.js` | JSON config persistence, profile storage, audit logging | ~160 |
-| `crypto-util.js` | AES-256-GCM encryption with PBKDF2 key derivation | ~180 |
-| `public/index.html` | Dashboard layout, modals, forms | ~520 |
-| `public/js/app.js` | All frontend logic: state, DOM, polling, charts, panels | ~2000 |
-| `public/css/styles.css` | Brutalist dark design system | ~430 |
-| `package.json` | Dependencies, build config (electron-builder) | ~80 |
+| `main.js` | Electron entry point, window creation, app menu, auto-update | ~390 |
+| `server.js` | Express REST API + WebSocket terminal + security middleware | ~880 |
+| `ssh-handler.js` | SSH connection pool, exec/shell/sftp, all remote commands | ~470 |
+| `settings.js` | JSON config persistence, profile storage, audit logging | ~180 |
+| `crypto-util.js` | AES-256-GCM encryption with PBKDF2 key derivation | ~200 |
+| `app-logger.js` | Rotating error log (5MB) in `~/.vps-commander/` | ~75 |
+| `public/index.html` | Dashboard layout, modals, forms | ~685 |
+| `public/js/app.js` | All frontend logic: state, DOM, polling, charts, panels | ~2390 |
+| `public/css/styles.css` | Brutalist dark design system | ~650 |
+| `package.json` | Dependencies, build config (electron-builder) | ~115 |
 
 ---
 
@@ -65,7 +66,7 @@
 - **SERVICES**: systemd unit list with start/stop/restart actions
 - **PROCESSES**: Sortable process table (PID, user, CPU%, MEM%, command) with kill/renice actions
 - **UFW**: Firewall rule management — enable/disable, add/delete rules, status display
-- **DOCKER**: Container management — start/stop/restart, inline log viewer
+- **DOCKER**: Container management — start/stop/restart, inline log viewer, per-container stats
 
 ### Terminal
 - Full xterm.js shell via WebSocket
@@ -90,19 +91,26 @@
 - **BULK COMMAND**: Run same command across all connected servers with per-server output
 - Session timeouts (1 hour default, configurable)
 
+### Auto-Update
+- **Self-updating** via GitHub Releases (electron-updater)
+- Checks for updates 5 seconds after launch and via **Help → Check for Updates…**
+- Native prompt to download + install; restarts the app automatically
+- Windows (NSIS), macOS (DMG/ZIP), and Linux (AppImage) update feeds published by the release workflow
+- Note: macOS auto-update requires a signed/notarized build; unsigned macOS builds degrade to a Releases-page prompt
+
 ### Security
 - **Vault system**: AES-256-GCM encrypted profile storage
 - **Master password** option: One password unlocks all saved profiles
 - **Machine key** fallback: Auto-derived from hostname/username
 - Rate limiting on `/api/connect` (10 requests per 15 seconds)
 - Input sanitization: regex validation on all user inputs (paths, service names, PIDs, Docker IDs, UFW rules)
-- Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, CSP
+- Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy (server middleware) + CSP (meta tag)
 - Passwords/keys cleared from DOM after connection
 - `ssh2.exec()` runs without local shell — no shell injection
 
 ### Audit Logging
 - All actions logged to `~/.vps-commander/audit.log`
-- Categories: CONNECT, DISCONNECT, CONNECT_FAIL, SERVICE, PROCESS, FILE, FIREWALL, DOCKER, BULK, ALERT, CONFIG, AUTH, SESSION
+- Categories: CONNECT, DISCONNECT, CONNECT_FAIL, SERVICE, PROCESS, FILE, FIREWALL, DOCKER, BULK, ALERT, CONFIG, AUTH, SESSION, PROFILE
 - Client-side alerts also write to audit log via `POST /api/audit-log`
 
 ---
@@ -122,7 +130,7 @@
 | GET | `/api/stats?sessionId=` | Server stats (CPU, mem, disk, network, etc.) |
 | GET | `/api/logs?sessionId=&file=&lines=` | Tail log files |
 | GET | `/api/services?sessionId=` | List systemd services |
-| POST | `/api/services/:name/:action` | Control service (start/stop/restart) |
+| POST | `/api/services/:name/:action` | Control service (start/stop/restart/status) |
 
 ### Processes
 | Method | Endpoint | Description |
@@ -182,7 +190,11 @@
 | DELETE | `/api/profiles/:id` | Delete profile |
 | GET | `/api/audit-log` | Read audit log |
 | POST | `/api/audit-log/clear` | Clear audit log |
-| POST | `/api/audit-log` | Write client-side audit entry |
+| POST | `/api/audit-log` | Write client-side audit entry (alerts) |
+| GET | `/api/error-log?lines=` | Read app error log |
+| POST | `/api/error-log` | Write client-side error entry |
+| DELETE | `/api/error-log` | Clear app error log |
+| GET | `/api/sound?path=` | Serve a custom alert sound file (wav/mp3/ogg/m4a/aac/flac/weba) |
 
 ### WebSocket
 | Message Type | Direction | Description |
@@ -231,7 +243,7 @@
 - **Industrial Brutalist UI**: Dark background (`#0A0A0A`), red accents (`#E61919`), green highlights (`#4AF626`), monospace throughout (`JetBrains Mono`)
 - **CRT overlay**: Subtle scanline and noise effects via CSS overlays
 - **Gap-based layout**: `var(--gap)` = 1px borders between panels (like window borders)
-- **Sticky table headers**: All tables use `position: sticky; top: 0` on thead
+- **Sticky table headers**: Process/file tables use `position: sticky; top: 0` on thead (contextual, off the z-index scale)
 - **Tab switching**: Class-based tab activation with `data-tab` attributes
 
 ### CSS Variables
@@ -240,14 +252,23 @@
 --bg-panel: #0E0E0E    /* Panel background */
 --bg-elevated: #141414 /* Header/modal background */
 --fg: #EAEAEA          /* Primary text */
---fg-dim: #666666      /* Dimmed text */
 --fg-mid: #999999      /* Medium text */
+--fg-dim: #858585      /* Dimmed text */
 --red: #E61919         /* Accent red */
+--red-bright: #FF2A2A  /* Bright red */
+--red-dim: #8B0000     /* Dim red */
 --green: #4AF626       /* Accent green */
+--amber: #FFB020       /* Warning amber */
 --border: #1F1F1F      /* Panel borders */
 --border-active: #333  /* Active borders */
 --font-mono: 'JetBrains Mono', monospace
---font-sans: 'Inter', sans-serif
+--font-sans: 'Barlow', sans-serif
+--font-display: 'Barlow Condensed', sans-serif
+--ease-out: cubic-bezier(0.23, 1, 0.32, 1)
+--ease-inout: cubic-bezier(0.77, 0, 0.175, 1)
+--dur-fast: 140ms / --dur: 200ms
+--z-overlay: 9990 / --z-modal: 10000 / --z-toast: 10100
+--gap: 1px
 ```
 
 ---
@@ -265,10 +286,15 @@
 | `terminalFontSize` | 13 | Terminal font size (px) |
 | `terminalScrollback` | 5000 | Terminal scrollback lines |
 | `sessionTimeout` | 3600000 | Session idle timeout (ms) |
+| `auditLog` | true | Enable audit logging |
 | `alertEnabled` | true | Enable alert thresholds |
+| `alertSound` | true | Play alert sound |
+| `alertSounds` | `{...}` | Per-alert-type toggles + optional custom audio files (cpu, memory, disk, network, connectOk, connectFail) |
 | `alertCpu` | 90 | CPU alert threshold (%) |
 | `alertMem` | 90 | Memory alert threshold (%) |
 | `alertDisk` | 90 | Disk alert threshold (%) |
+| `alertNetMbps` | 800 | Network throughput alert threshold (Mbps) |
+| `logPresets` | `[...]` | Default log files to tail |
 
 ### Profiles (`~/.vps-commander/profiles.json`)
 - Passwords and SSH keys encrypted with AES-256-GCM
@@ -286,30 +312,30 @@
 ## Build & Release
 
 ### Dependencies
-- **Runtime**: express, ssh2, ws
-- **Dev**: electron, electron-builder
+- **Runtime**: express, ssh2, ws, electron-updater
+- **Dev**: electron, electron-builder, @axe-core/playwright + playwright-core (a11y audit)
 
 ### Build Commands
 ```bash
 npm start          # Launch Electron app (dev)
 npm run server     # Run Express server only (browser mode on port 3141)
 npm run build:win  # Build Windows NSIS installer + portable
-npm run build:mac  # Build macOS DMG
+npm run build:mac  # Build macOS DMG + ZIP
 npm run build:linux # Build Linux AppImage + deb
 ```
 
 ### Build Output (`dist/`)
 - Windows: NSIS installer + portable `.exe`
-- macOS: `.dmg` with hardened runtime
+- macOS: `.dmg` + `.zip` with hardened runtime and entitlements
 - Linux: `.AppImage` + `.deb`
 - Icon: `public/icon.png` (PNG) / `public/icon.ico` (Windows)
 
 ### electron-builder Config
 - `appId`: `com.vpscommander.app`
 - `productName`: `VPS Commander`
-- Files included: `main.js`, `server.js`, `ssh-handler.js`, `settings.js`, `crypto-util.js`, `public/**`, `node_modules/**`, `package.json`
+- Files included: `main.js`, `server.js`, `ssh-handler.js`, `settings.js`, `crypto-util.js`, `app-logger.js`, `public/**`, `node_modules/**`, `package.json`
 - Windows installer: non-oneClick, allows install directory choice, desktop + start menu shortcuts
-- macOS: hardened runtime enabled, DMG target
+- macOS: hardened runtime enabled, DMG + ZIP targets, `entitlements.mac.plist` (JIT + file-access entitlements)
 
 ---
 
@@ -349,6 +375,9 @@ App Start → readKeyFile() → machine mode (auto-unlock) OR master mode (show 
 Unlock → verify hash with timingSafeEqual → derive decryption key → clear modal → load profiles
 Lock → null memoryKey → profiles unreadable
 ```
+
+Master password verification uses 120K PBKDF2 iterations and `crypto.timingSafeEqual`; switching between master and machine mode re-encrypts all profiles via `reencryptProfiles()`.
+
 
 ### Input Validation
 - Log paths: `SAFE_LOG_PATH = /^\/var\/log\/[a-zA-Z0-9_\/.\-]+$/`
@@ -391,7 +420,7 @@ Lock → null memoryKey → profiles unreadable
 2. **Run full app**: `npm start` (Electron)
 3. **Make frontend changes**: Edit `public/js/app.js`, `public/css/styles.css`, `public/index.html`
 4. **Make backend changes**: Edit `server.js`, `ssh-handler.js`, `settings.js`, `crypto-util.js`
-5. **Test**: No test suite — test manually in browser or Electron
+5. **Test**: No unit test suite — run `node --check` after JS edits and `npm run a11y` (axe-core/Playwright, WCAG 2.1 AA) after UI/HTML changes, then test manually in browser or Electron
 6. **Build**: `npm run build:win` (or `mac`/`linux`)
 
 ### Adding a New Feature (Pattern)
