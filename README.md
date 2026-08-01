@@ -150,11 +150,18 @@ Download the latest release for your platform from the [Releases](https://github
 
 | Platform | File |
 |----------|------|
-| Windows | `VPS Commander Setup *.exe` (NSIS installer) or `*.exe` (portable) |
-| macOS | `*.dmg` or `*.zip` |
-| Linux | `*.AppImage` or `*.deb` |
+| Windows (x64) | `VPS Commander Setup *.exe` (NSIS installer) or `VPS Commander *.exe` (portable) |
+| macOS (Apple Silicon) | `*-arm64.dmg` or `*-arm64-mac.zip` |
+| macOS (Intel) | `*.dmg` or `*-mac.zip` — the builds *without* `arm64` in the name |
+| Linux (x64) | `*.AppImage` or `*.deb` |
 
 > Auto-update works with the **NSIS installer**, **DMG/ZIP**, and **AppImage** builds. The Windows *portable* `.exe` does not self-update (electron-updater limitation) — use the installer to receive updates.
+
+> **Builds are currently unsigned.** Until code-signing secrets are configured (see [docs/SIGNING.md](docs/SIGNING.md)), your OS will warn on first launch:
+>
+> - **Windows** — SmartScreen shows "Windows protected your PC". Click **More info → Run anyway**.
+> - **macOS** — Gatekeeper blocks the app outright. Right-click the app → **Open** → **Open**, or run `xattr -dr com.apple.quarantine "/Applications/VPS Commander.app"`.
+> - **Linux** — no signature is expected; mark the AppImage executable with `chmod +x`.
 
 ---
 
@@ -170,9 +177,9 @@ npm start          # Launch the Electron app
 ### Build Executables
 
 ```bash
-npm run build:win    # Windows (.exe) — NSIS installer + portable
-npm run build:mac    # macOS (.dmg + .zip)
-npm run build:linux  # Linux (.AppImage, .deb)
+npm run build:win    # Windows (.exe) — NSIS installer + portable, x64
+npm run build:mac    # macOS (.dmg + .zip) — arm64 and x64
+npm run build:linux  # Linux (.AppImage, .deb) — x64
 ```
 
 Output appears in the `dist/` folder. The `prebuild` hook regenerates app icons automatically for builds; during development you can run `npm run icon` directly to regenerate them.

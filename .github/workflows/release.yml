@@ -118,7 +118,7 @@ jobs:
             dist/*.zip
             dist/*.AppImage
             dist/*.deb
-            dist/*.yml
+            dist/latest*.yml
             dist/*.blockmap
           if-no-files-found: error
 
@@ -138,11 +138,13 @@ jobs:
         with:
           draft: false
           generate_release_notes: true
+          # `latest*.yml` only — a bare `*.yml` also sweeps up electron-builder's
+          # `builder-debug.yml`, which is build diagnostics, not a deliverable.
           files: |
             dist-artifacts/*.exe
             dist-artifacts/*.dmg
             dist-artifacts/*.zip
             dist-artifacts/*.AppImage
             dist-artifacts/*.deb
-            dist-artifacts/*.yml
+            dist-artifacts/latest*.yml
             dist-artifacts/*.blockmap
