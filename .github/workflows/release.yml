@@ -8,8 +8,26 @@ permissions:
   contents: write
 
 jobs:
+  docs:
+    name: Docs freshness
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Offline TOC/anchor + relative-link check — same gate as ci.yml's `docs`
+      # job. Deterministic (no network), so a release never ships with broken
+      # doc anchors or missing link targets. Live external-link probing stays
+      # on the weekly links.yml schedule, not on the release path.
+      - name: Verify docs TOC anchors and relative links
+        run: node scripts/docs-freshness.js
+
   build:
     name: Build ${{ matrix.os }}
+    needs: docs
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -45,6 +63,50 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: npm run build
+      # Signature verification — if signing secrets are configured, the build
+      # MUST come out signed; a missing/broken signature fails CI here instead
+      # of shipping to users. When no secrets are set, releases stay
+      # intentionally unsigned and these steps are skipped. Linux is unsigned
+      # by design (no per-app signature requirement).
+      - name: Verify Windows signature
+        if: runner.os == 'Windows' && secrets.WIN_CSC_LINK != ''
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path dist -Filter *.exe
+          if (-not $files) {
+            throw 'No .exe artifacts found in dist/ to verify'
+          }
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature -FilePath $f.FullName
+            Write-Host "$($f.Name): $($sig.Status)"
+            if ($sig.Status -ne 'Valid') {
+              throw "Signature NOT valid on $($f.Name) (Status: $($sig.Status)) — signing is configured but the installer is not properly signed"
+            }
+          }
+          Write-Host "Verified $($files.Count) Windows artifact(s) with valid Authenticode signatures"
+      - name: Verify macOS signature
+        if: runner.os == 'macOS' && (secrets.MAC_CSC_LINK != '' || secrets.APPLE_API_KEY != '')
+        shell: bash
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          APP="$(find dist -maxdepth 2 -name '*.app' -type d 2>/dev/null | head -1 || true)"
+          if [ -z "$APP" ]; then
+            echo '::error::No .app bundle found under dist/ — cannot verify signature'
+            exit 1
+          fi
+          echo "Verifying bundle: $APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo '--- Signature identity ---'
+          codesign -dv --verbose=2 "$APP" 2>&1 | grep -E 'Signature=|Identifier=' || true
+          if [ -n "$APPLE_API_KEY" ]; then
+            echo '--- Gatekeeper / notarization check ---'
+            spctl -a -vv "$APP"
+            echo 'Gatekeeper accepted — app is notarized'
+          else
+            echo 'Skipping spctl: notarization secrets not configured'
+          fi
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
