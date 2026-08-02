@@ -200,22 +200,34 @@ class SSHHandler {
   }
 
   // ── UFW Firewall ──────────────────────────────────────
+  // Every ufw call needs root — the binary refuses outright otherwise
+  // ("ERROR: You need to be root to run this script"). `-n` because this runs
+  // over a non-interactive exec channel with no tty: without it, a host whose
+  // sudoers wants a password blocks forever and the panel spins. Failing fast
+  // with a readable error beats hanging. Matches `sudo systemctl` above.
   async getUfwStatus(id) {
-    const { stdout } = await this.exec(id, 'ufw status verbose 2>&1');
-    const status = {};
+    const { stdout } = await this.exec(id, 'sudo -n ufw status verbose 2>&1');
+    const status = { active: null, rules: [] };
     const lines = stdout.split('\n');
     for (const line of lines) {
       if (line.startsWith('Status:')) status.active = line.includes('active');
       if (line.startsWith('Default:')) status.defaultPolicy = line.replace('Default:', '').trim();
       if (line.startsWith('Logging:')) status.logging = line.replace('Logging:', '').trim();
     }
-    // Parse rules
-    status.rules = [];
-    const { stdout: numberedOut } = await this.exec(id, 'ufw status numbered 2>&1');
-    const numLines = numberedOut.split('\n');
-    for (const line of numLines) {
+
+    // `active` stays null when no Status: line came back, which means the read
+    // FAILED — not that the firewall is off. Collapsing those two into "false"
+    // is how this panel reported a live firewall (7,304 rules) as disabled and
+    // sent someone looking for an outage that never happened. A monitor that
+    // cannot tell "off" from "could not check" is worse than no monitor.
+    if (status.active === null) {
+      status.error = stdout.trim() || 'no output from ufw';
+      return status;
+    }
+
+    const { stdout: numberedOut } = await this.exec(id, 'sudo -n ufw status numbered 2>&1');
+    for (const line of numberedOut.split('\n')) {
       if (line.startsWith('[') && line.includes(']')) {
-        inRules = true;
         const match = line.match(/^\[(\d+)\]\s+(.+?)\s+(ALLOW|DENY|LIMIT|REJECT)\s+(.+)$/);
         if (match) {
           status.rules.push({ number: parseInt(match[1]), rule: match[2].trim(), action: match[3], from: match[4].trim() });
@@ -226,23 +238,23 @@ class SSHHandler {
   }
 
   async enableUfw(id) {
-    const { stdout } = await this.exec(id, 'echo y | ufw enable 2>&1');
+    const { stdout } = await this.exec(id, 'sudo -n ufw --force enable 2>&1');
     return { success: true, output: stdout };
   }
 
   async disableUfw(id) {
-    const { stdout } = await this.exec(id, 'echo y | ufw disable 2>&1');
+    const { stdout } = await this.exec(id, 'sudo -n ufw --force disable 2>&1');
     return { success: true, output: stdout };
   }
 
   async addUfwRule(id, rule, action) {
-    const cmd = `ufw ${action.toLowerCase()} ${rule} 2>&1`;
+    const cmd = `sudo -n ufw ${action.toLowerCase()} ${rule} 2>&1`;
     const { stdout, stderr } = await this.exec(id, cmd);
     return { success: true, output: stdout || stderr };
   }
 
   async deleteUfwRule(id, ruleNum) {
-    const { stdout, stderr } = await this.exec(id, `ufw --force delete ${ruleNum} 2>&1`);
+    const { stdout, stderr } = await this.exec(id, `sudo -n ufw --force delete ${ruleNum} 2>&1`);
     return { success: true, output: stdout || stderr };
   }
 
