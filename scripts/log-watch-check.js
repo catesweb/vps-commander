@@ -20,7 +20,9 @@ const path = require('path');
 const assert = require('assert');
 
 const APP_JS = path.join(__dirname, '..', 'public', 'js', 'app.js');
-const src = fs.readFileSync(APP_JS, 'utf8');
+// Normalise CRLF: git checks the tree out with native endings on Windows, and
+// the '\n}\n' scrape below silently finds nothing against '\r\n}\r\n'.
+const src = fs.readFileSync(APP_JS, 'utf8').replace(/\r\n/g, '\n');
 
 const start = src.indexOf('function matchLogWatch(');
 assert.ok(start !== -1, 'matchLogWatch not found in public/js/app.js');
