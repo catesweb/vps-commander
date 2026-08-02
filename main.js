@@ -3,6 +3,15 @@ const path = require('path');
 const { fork, execSync, execFileSync } = require('child_process');
 const appLogger = require('./app-logger');
 
+// Windows decides the taskbar icon, window grouping, pin target and notification
+// identity from the AppUserModelID — NOT from BrowserWindow's `icon:`, which only
+// dresses the window itself. With no AUMID set, Windows falls back to the running
+// executable, so the taskbar shows electron.exe's default icon and calls the app
+// "Electron", and a pin re-resolves to Electron on the next launch.
+// Must match `build.appId` in package.json, and must run before any window or
+// notification is created. No-op off Windows.
+app.setAppUserModelId('com.vpscommander.app');
+
 // Auto-update via GitHub Releases (electron-updater).
 // Guarded by app.isPackaged so dev mode (`npm start`) never self-updates.
 let autoUpdater = null;
