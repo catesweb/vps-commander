@@ -264,12 +264,26 @@
 --font-mono: 'JetBrains Mono', monospace
 --font-sans: 'Barlow', sans-serif
 --font-display: 'Barlow Condensed', sans-serif
+--ui-scale: 1          /* user knob, Settings > Display > UI Scale (1 - 1.75) */
+--fs-xs: 10px * scale  /* dense table buttons */
+--fs-sm: 11px * scale  /* table cells, log text */
+--fs-md: 12px * scale  /* labels, tabs, controls */
+--fs-base: 13px * scale/* body, header */
+--fs-lg: 14px * scale  /* buttons, status bar */
+--fs-xl: 15px * scale  /* inputs, terminal */
+--fs-2xl: 17px * scale /* modal titles */
+--side-w / --sysinfo-w / --bottom-h  /* splitter sizes, written by layout.js */
 --ease-out: cubic-bezier(0.23, 1, 0.32, 1)
 --ease-inout: cubic-bezier(0.77, 0, 0.175, 1)
 --dur-fast: 140ms / --dur: 200ms
 --z-overlay: 9990 / --z-modal: 10000 / --z-toast: 10100
 --gap: 1px
 ```
+
+**No bare `px` font sizes.** Every `font-size` in `styles.css` resolves through
+the `--fs-*` tokens so the whole UI scales from one variable. The old scale
+bottomed out at 8px with 54 of 64 declarations at 10px or below — unreadable at
+a normal desk distance. Adding a bare `font-size: 9px` re-opens that hole.
 
 ---
 
@@ -290,6 +304,7 @@
 | `alertEnabled` | true | Enable alert thresholds |
 | `alertSound` | true | Play alert sound |
 | `alertSounds` | `{...}` | Per-alert-type toggles + optional custom audio files (cpu, memory, disk, network, connectOk, connectFail) |
+| `layout` | `{...}` | `panels` / `stats` order, `hiddenStats`, `sideW` / `sysinfoW` / `bottomH` divider sizes, `uiScale` — written by `public/js/layout.js` as the user rearranges |
 | `alertCpu` | 90 | CPU alert threshold (%) |
 | `alertMem` | 90 | Memory alert threshold (%) |
 | `alertDisk` | 90 | Disk alert threshold (%) |
@@ -328,7 +343,7 @@ npm run build:linux # Build Linux AppImage + deb
 - Windows: NSIS installer + portable `.exe`
 - macOS: `.dmg` + `.zip` with hardened runtime and entitlements
 - Linux: `.AppImage` + `.deb`
-- Icon: `public/icon.png` (PNG) / `public/icon.ico` (Windows)
+- Icon: `public/icon.png` (512px PNG) / `public/icon.ico` (Windows, 16–256px) — built by `npm run icon` from `assets/icon-source.png` (1024×1024), which also emits `favicon-16x16.png` / `favicon-32x32.png`
 
 ### electron-builder Config
 - `appId`: `com.vpscommander.app`

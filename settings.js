@@ -27,11 +27,14 @@ const DEFAULT_SETTINGS = {
     network:   { enabled: true, file: '' },
     connectOk: { enabled: true, file: '' },
     connectFail: { enabled: true, file: '' },
+    logWatch:  { enabled: true, file: '' },
   },
   alertCpu: 90,
   alertMem: 90,
   alertDisk: 90,
   alertNetMbps: 800,
+  // Substrings matched case-insensitively against new lines in the polled log.
+  logWatch: ['error', 'fail', 'denied', 'panic', 'segfault', 'refused'],
   logPresets: [
     '/var/log/syslog',
     '/var/log/auth.log',

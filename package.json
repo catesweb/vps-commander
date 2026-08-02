@@ -11,6 +11,12 @@
   "scripts": {
     "icon": "node scripts/generate-icon.js",
     "a11y": "node scripts/a11y-audit.js",
+    "layout": "node scripts/layout-check.js",
+    "terminal-check": "node scripts/terminal-check.js",
+    "terminal-focus": "node scripts/terminal-focus-check.js",
+    "profile-key": "node scripts/profile-key-check.js",
+    "log-watch": "node scripts/log-watch-check.js",
+    "sound-check": "node scripts/sound-check.js",
     "start": "electron .",
     "dev": "electron .",
     "server": "node server.js",

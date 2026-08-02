@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, screen } = require('electron');
 const path = require('path');
 const { fork, execSync, execFileSync } = require('child_process');
 const appLogger = require('./app-logger');
@@ -268,11 +268,20 @@ function promptOpenRelease(version) {
 }
 
 function createWindow() {
+  // Clamp the default size to the display's work area. A hardcoded 1400x900 opens
+  // LARGER than the desktop on a 1366x768 laptop, so the right and bottom edges sit
+  // off-screen and the UI looks clipped even though the layout is fine. workAreaSize
+  // already excludes the taskbar. The floor matches minWidth/minHeight below so a
+  // very small display still gets a usable window rather than a degenerate one.
+  const { width: availW, height: availH } = screen.getPrimaryDisplay().workAreaSize;
+  const winWidth = Math.max(900, Math.min(1400, availW));
+  const winHeight = Math.max(600, Math.min(900, availH));
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 900,
-    minHeight: 600,
+    width: winWidth,
+    height: winHeight,
+    minWidth: Math.min(900, availW),
+    minHeight: Math.min(600, availH),
     show: false,
     title: '[ VPS COMMANDER ] :: TACTICAL TELEMETRY',
     backgroundColor: '#0A0A0A',

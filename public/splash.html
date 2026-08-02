@@ -69,9 +69,15 @@
     }
 
     /* ── Loading bar ────────────────────────────────────────── */
+    /* Centered with auto margins, not translateX(-50%): the reveal animation
+       below animates `transform`, and an animated transform replaces the base
+       one outright rather than composing with it — the bar centred itself for
+       one frame and then jumped half its width to the right for the rest of the
+       splash. The reduced-motion block's `transform: none` broke it the same
+       way. Auto margins leave `transform` free for the animation alone. */
     .load-bar {
-      position: absolute; bottom: 40px; left: 50%;
-      transform: translateX(-50%);
+      position: absolute; bottom: 40px; left: 0; right: 0;
+      margin-left: auto; margin-right: auto;
       width: 180px; height: 2px;
       background: #1F1F1F; border-radius: 1px;
       overflow: hidden;

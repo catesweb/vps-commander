@@ -123,25 +123,25 @@
 
       <!-- TOP ROW: STATS -->
     <section class="stats-row">
-      <div class="stat-block">
+      <div class="stat-block" data-stat="cpu" draggable="true" tabindex="0" role="group" aria-roledescription="Reorderable statistic" aria-label="CPU load. Drag, or press Alt with the left and right arrow keys, to reorder.">
         <div class="stat-label">[ CPU_LOAD ]</div>
         <div class="stat-value" id="stat-cpu">--</div>
         <canvas class="stat-chart" id="chart-cpu"></canvas>
         <div class="stat-bar"><div class="stat-bar-fill" id="stat-cpu-bar"></div></div>
       </div>
-      <div class="stat-block">
+      <div class="stat-block" data-stat="mem" draggable="true" tabindex="0" role="group" aria-roledescription="Reorderable statistic" aria-label="Memory. Drag, or press Alt with the left and right arrow keys, to reorder.">
         <div class="stat-label">[ MEMORY ]</div>
         <div class="stat-value" id="stat-mem">--</div>
         <canvas class="stat-chart" id="chart-mem"></canvas>
         <div class="stat-bar"><div class="stat-bar-fill" id="stat-mem-bar"></div></div>
       </div>
-      <div class="stat-block">
+      <div class="stat-block" data-stat="disk" draggable="true" tabindex="0" role="group" aria-roledescription="Reorderable statistic" aria-label="Disk. Drag, or press Alt with the left and right arrow keys, to reorder.">
         <div class="stat-label">[ DISK_/ ]</div>
         <div class="stat-value" id="stat-disk">--</div>
         <canvas class="stat-chart" id="chart-disk"></canvas>
         <div class="stat-bar"><div class="stat-bar-fill" id="stat-disk-bar"></div></div>
       </div>
-      <div class="stat-block">
+      <div class="stat-block" data-stat="net" draggable="true" tabindex="0" role="group" aria-roledescription="Reorderable statistic" aria-label="Network. Drag, or press Alt with the left and right arrow keys, to reorder.">
         <div class="stat-label">[ NETWORK ]</div>
         <div class="stat-value net-value" id="stat-net">--</div>
         <canvas class="stat-chart" id="chart-net"></canvas>
@@ -150,15 +150,15 @@
           <span class="net-rx"><i class="net-dot-rx"></i>RX <span id="net-rx-val">--</span></span>
         </div>
       </div>
-      <div class="stat-block">
+      <div class="stat-block" data-stat="uptime" draggable="true" tabindex="0" role="group" aria-roledescription="Reorderable statistic" aria-label="Uptime. Drag, or press Alt with the left and right arrow keys, to reorder.">
         <div class="stat-label">[ UPTIME ]</div>
         <div class="stat-value" id="stat-uptime">--</div>
       </div>
-      <div class="stat-block">
+      <div class="stat-block" data-stat="load" draggable="true" tabindex="0" role="group" aria-roledescription="Reorderable statistic" aria-label="Load average. Drag, or press Alt with the left and right arrow keys, to reorder.">
         <div class="stat-label">[ LOAD_AVG ]</div>
         <div class="stat-value" id="stat-load">--</div>
       </div>
-      <div class="stat-block">
+      <div class="stat-block" data-stat="proc" draggable="true" tabindex="0" role="group" aria-roledescription="Reorderable statistic" aria-label="Process count. Drag, or press Alt with the left and right arrow keys, to reorder.">
         <div class="stat-label">[ PROCESSES ]</div>
         <div class="stat-value" id="stat-procs">--</div>
       </div>
@@ -166,8 +166,9 @@
 
     <!-- MID ROW: TERMINAL + SERVICES -->
     <section class="main-row">
-      <div class="panel panel-terminal">
+      <div class="panel panel-terminal" data-panel="terminal">
         <div class="panel-header">
+        <button type="button" class="panel-grip" data-grip aria-label="Move the terminal panel. Drag it onto another panel to swap them, or press the arrow keys."><svg class="icon" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><circle cx="4" cy="2.5" r="1"/><circle cx="8" cy="2.5" r="1"/><circle cx="4" cy="6" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="4" cy="9.5" r="1"/><circle cx="8" cy="9.5" r="1"/></svg></button>
           <span class="panel-title">[ TERMINAL ]</span>
           <span class="panel-subtitle" id="term-host">ssh://--</span>
           <span class="panel-actions">
@@ -179,8 +180,11 @@
         <div id="terminal-container" class="terminal-container"></div>
       </div>
 
-      <div class="panel panel-services">
+      <div class="splitter splitter-col" data-resize="side-w" role="separator"
+           aria-orientation="vertical" tabindex="0" aria-label="Resize the side panel. Use the left and right arrow keys."></div>
+      <div class="panel panel-services" data-panel="services">
         <div class="panel-header">
+        <button type="button" class="panel-grip" data-grip aria-label="Move the services panel. Drag it onto another panel to swap them, or press the arrow keys."><svg class="icon" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><circle cx="4" cy="2.5" r="1"/><circle cx="8" cy="2.5" r="1"/><circle cx="4" cy="6" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="4" cy="9.5" r="1"/><circle cx="8" cy="9.5" r="1"/></svg></button>
           <div class="panel-tabs" role="tablist" aria-label="Server management">
             <button type="button" class="panel-tab tab-active" id="tab-services-btn" role="tab" data-tab="services" aria-selected="true" aria-controls="tab-services" tabindex="0">[ SERVICES ]</button>
             <button type="button" class="panel-tab" id="tab-processes-btn" role="tab" data-tab="processes" aria-selected="false" aria-controls="tab-processes" tabindex="-1">[ PROCESSES ]</button>
@@ -300,10 +304,15 @@
       </div>
     </section>
 
+    <div class="splitter splitter-row" data-resize="bottom-h" role="separator"
+         aria-orientation="horizontal" tabindex="0"
+         aria-label="Resize the bottom row. Use the up and down arrow keys."></div>
+
     <!-- BOTTOM ROW: LOGS + SYSTEM INFO -->
     <section class="bottom-row">
-      <div class="panel panel-logs">
+      <div class="panel panel-logs" data-panel="logs">
         <div class="panel-header">
+        <button type="button" class="panel-grip" data-grip aria-label="Move the logs panel. Drag it onto another panel to swap them, or press the arrow keys."><svg class="icon" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><circle cx="4" cy="2.5" r="1"/><circle cx="8" cy="2.5" r="1"/><circle cx="4" cy="6" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="4" cy="9.5" r="1"/><circle cx="8" cy="9.5" r="1"/></svg></button>
           <div class="panel-tabs" role="tablist" aria-label="Logs and files">
             <button type="button" class="panel-tab tab-active" id="tab-logs-btn" role="tab" data-tab="logs" aria-selected="true" aria-controls="tab-logs" tabindex="0">[ SYSTEM LOGS ]</button>
             <button type="button" class="panel-tab" id="tab-files-btn" role="tab" data-tab="files" aria-selected="false" aria-controls="tab-files" tabindex="-1">[ FILES ]</button>
@@ -368,8 +377,11 @@
         </div>
       </div>
 
-      <div class="panel panel-sysinfo">
+      <div class="splitter splitter-col" data-resize="sysinfo-w" role="separator"
+           aria-orientation="vertical" tabindex="0" aria-label="Resize the system info panel. Use the left and right arrow keys."></div>
+      <div class="panel panel-sysinfo" data-panel="sysinfo">
         <div class="panel-header">
+        <button type="button" class="panel-grip" data-grip aria-label="Move the system info panel. Drag it onto another panel to swap them, or press the arrow keys."><svg class="icon" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><circle cx="4" cy="2.5" r="1"/><circle cx="8" cy="2.5" r="1"/><circle cx="4" cy="6" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="4" cy="9.5" r="1"/><circle cx="8" cy="9.5" r="1"/></svg></button>
           <div class="panel-tabs" role="tablist" aria-label="System information">
             <button type="button" class="panel-tab tab-active" id="tab-sysinfo-btn" role="tab" data-tab="sysinfo" aria-selected="true" aria-controls="tab-sysinfo" tabindex="0">[ SYSTEM INFO ]</button>
             <button type="button" class="panel-tab" id="tab-audit-btn" role="tab" data-tab="audit" aria-selected="false" aria-controls="tab-audit" tabindex="-1">[ AUDIT LOG ]</button>
@@ -524,6 +536,40 @@
             <span class="settings-label">Terminal Font Size</span>
             <input type="number" id="setting-fontsize" class="settings-input" min="10" max="24" value="13" aria-label="Terminal font size">
           </div>
+          <div class="settings-row">
+            <span class="settings-label">UI Scale</span>
+            <select id="setting-ui-scale" class="settings-select" aria-label="UI scale">
+              <option value="1">100% (DEFAULT)</option>
+              <option value="1.15">115%</option>
+              <option value="1.3">130%</option>
+              <option value="1.5">150%</option>
+              <option value="1.75">175%</option>
+            </select>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h2 class="settings-heading">LAYOUT</h2>
+          <p class="settings-hint">
+            Drag a panel by its grip to swap it with another. Drag a stat block to reorder it.
+            Drag the dividers to resize. Everything below is saved automatically —
+            keyboard: arrow keys on a grip or divider, Alt + arrows on a stat block.
+          </p>
+          <fieldset class="settings-fieldset">
+            <legend class="settings-subheading">Visible stats</legend>
+            <div class="stat-vis-grid">
+              <label class="stat-vis"><input type="checkbox" id="stat-vis-cpu" checked> CPU_LOAD</label>
+              <label class="stat-vis"><input type="checkbox" id="stat-vis-mem" checked> MEMORY</label>
+              <label class="stat-vis"><input type="checkbox" id="stat-vis-disk" checked> DISK</label>
+              <label class="stat-vis"><input type="checkbox" id="stat-vis-net" checked> NETWORK</label>
+              <label class="stat-vis"><input type="checkbox" id="stat-vis-uptime" checked> UPTIME</label>
+              <label class="stat-vis"><input type="checkbox" id="stat-vis-load" checked> LOAD_AVG</label>
+              <label class="stat-vis"><input type="checkbox" id="stat-vis-proc" checked> PROCESSES</label>
+            </div>
+          </fieldset>
+          <div class="settings-row">
+            <span class="settings-label">Reset layout</span>
+            <button type="button" class="btn-sm" id="setting-layout-reset">RESTORE DEFAULTS</button>
+          </div>
         </div>
         <div class="settings-section">
           <h2 class="settings-heading">POLLING INTERVALS (ms)</h2>
@@ -589,60 +635,91 @@
           <div class="settings-row sound-row">
             <span class="settings-label">CPU</span>
             <span class="settings-value sound-picker">
-              <input type="text" id="sound-cpu" class="settings-input sound-path" placeholder="(default beep)" readonly aria-label="CPU sound file">
-              <button class="btn-sm sound-load" data-type="cpu" aria-label="Load CPU sound">📁</button>
-              <button class="btn-sm sound-clear" data-type="cpu" aria-label="Reset CPU sound">✕</button>
-              <button class="btn-sm sound-test" data-type="cpu" aria-label="Test CPU sound">▶</button>
+              <select class="settings-select sound-preset" data-type="cpu" aria-label="CPU alert sound">
+                <option value="">DEFAULT BEEP</option>
+              </select>
+              <input type="hidden" id="sound-cpu">
+              <button class="btn-sm sound-load" data-type="cpu" aria-label="Choose a custom CPU sound file">📁</button>
+              <button class="btn-sm sound-clear" data-type="cpu" aria-label="Reset CPU sound to the default beep">✕</button>
+              <button class="btn-sm sound-test" data-type="cpu" aria-label="Preview the CPU sound">▶</button>
               <input type="file" class="sound-file-input" data-type="cpu" accept=".wav,.mp3,.ogg,.m4a,.aac" style="display:none;">
             </span>
           </div>
           <div class="settings-row sound-row">
             <span class="settings-label">Memory</span>
             <span class="settings-value sound-picker">
-              <input type="text" id="sound-memory" class="settings-input sound-path" placeholder="(default beep)" readonly aria-label="Memory sound file">
-              <button class="btn-sm sound-load" data-type="memory" aria-label="Load memory sound">📁</button>
-              <button class="btn-sm sound-clear" data-type="memory" aria-label="Reset memory sound">✕</button>
-              <button class="btn-sm sound-test" data-type="memory" aria-label="Test memory sound">▶</button>
+              <select class="settings-select sound-preset" data-type="memory" aria-label="Memory alert sound">
+                <option value="">DEFAULT BEEP</option>
+              </select>
+              <input type="hidden" id="sound-memory">
+              <button class="btn-sm sound-load" data-type="memory" aria-label="Choose a custom memory sound file">📁</button>
+              <button class="btn-sm sound-clear" data-type="memory" aria-label="Reset memory sound to the default beep">✕</button>
+              <button class="btn-sm sound-test" data-type="memory" aria-label="Preview the memory sound">▶</button>
               <input type="file" class="sound-file-input" data-type="memory" accept=".wav,.mp3,.ogg,.m4a,.aac" style="display:none;">
             </span>
           </div>
           <div class="settings-row sound-row">
             <span class="settings-label">Disk</span>
             <span class="settings-value sound-picker">
-              <input type="text" id="sound-disk" class="settings-input sound-path" placeholder="(default beep)" readonly aria-label="Disk sound file">
-              <button class="btn-sm sound-load" data-type="disk" aria-label="Load disk sound">📁</button>
-              <button class="btn-sm sound-clear" data-type="disk" aria-label="Reset disk sound">✕</button>
-              <button class="btn-sm sound-test" data-type="disk" aria-label="Test disk sound">▶</button>
+              <select class="settings-select sound-preset" data-type="disk" aria-label="Disk alert sound">
+                <option value="">DEFAULT BEEP</option>
+              </select>
+              <input type="hidden" id="sound-disk">
+              <button class="btn-sm sound-load" data-type="disk" aria-label="Choose a custom disk sound file">📁</button>
+              <button class="btn-sm sound-clear" data-type="disk" aria-label="Reset disk sound to the default beep">✕</button>
+              <button class="btn-sm sound-test" data-type="disk" aria-label="Preview the disk sound">▶</button>
               <input type="file" class="sound-file-input" data-type="disk" accept=".wav,.mp3,.ogg,.m4a,.aac" style="display:none;">
             </span>
           </div>
           <div class="settings-row sound-row">
             <span class="settings-label">Network</span>
             <span class="settings-value sound-picker">
-              <input type="text" id="sound-network" class="settings-input sound-path" placeholder="(default beep)" readonly aria-label="Network sound file">
-              <button class="btn-sm sound-load" data-type="network" aria-label="Load network sound">📁</button>
-              <button class="btn-sm sound-clear" data-type="network" aria-label="Reset network sound">✕</button>
-              <button class="btn-sm sound-test" data-type="network" aria-label="Test network sound">▶</button>
+              <select class="settings-select sound-preset" data-type="network" aria-label="Network alert sound">
+                <option value="">DEFAULT BEEP</option>
+              </select>
+              <input type="hidden" id="sound-network">
+              <button class="btn-sm sound-load" data-type="network" aria-label="Choose a custom network sound file">📁</button>
+              <button class="btn-sm sound-clear" data-type="network" aria-label="Reset network sound to the default beep">✕</button>
+              <button class="btn-sm sound-test" data-type="network" aria-label="Preview the network sound">▶</button>
               <input type="file" class="sound-file-input" data-type="network" accept=".wav,.mp3,.ogg,.m4a,.aac" style="display:none;">
+            </span>
+          </div>
+          <div class="settings-row sound-row">
+            <span class="settings-label">Log Watch</span>
+            <span class="settings-value sound-picker">
+              <select class="settings-select sound-preset" data-type="logWatch" aria-label="Log Watch alert sound">
+                <option value="">DEFAULT BEEP</option>
+              </select>
+              <input type="hidden" id="sound-logWatch">
+              <button class="btn-sm sound-load" data-type="logWatch" aria-label="Choose a custom log watch sound file">📁</button>
+              <button class="btn-sm sound-clear" data-type="logWatch" aria-label="Reset log watch sound to the default beep">✕</button>
+              <button class="btn-sm sound-test" data-type="logWatch" aria-label="Preview the log watch sound">▶</button>
+              <input type="file" class="sound-file-input" data-type="logWatch" accept=".wav,.mp3,.ogg,.m4a,.aac" style="display:none;">
             </span>
           </div>
           <div class="settings-row sound-row">
             <span class="settings-label">Connect OK</span>
             <span class="settings-value sound-picker">
-              <input type="text" id="sound-connectOk" class="settings-input sound-path" placeholder="(default beep)" readonly aria-label="Connect OK sound file">
-              <button class="btn-sm sound-load" data-type="connectOk" aria-label="Load connect OK sound">📁</button>
-              <button class="btn-sm sound-clear" data-type="connectOk" aria-label="Reset connect OK sound">✕</button>
-              <button class="btn-sm sound-test" data-type="connectOk" aria-label="Test connect OK sound">▶</button>
+              <select class="settings-select sound-preset" data-type="connectOk" aria-label="Connect OK alert sound">
+                <option value="">DEFAULT BEEP</option>
+              </select>
+              <input type="hidden" id="sound-connectOk">
+              <button class="btn-sm sound-load" data-type="connectOk" aria-label="Choose a custom connect OK sound file">📁</button>
+              <button class="btn-sm sound-clear" data-type="connectOk" aria-label="Reset connect OK sound to the default beep">✕</button>
+              <button class="btn-sm sound-test" data-type="connectOk" aria-label="Preview the connect OK sound">▶</button>
               <input type="file" class="sound-file-input" data-type="connectOk" accept=".wav,.mp3,.ogg,.m4a,.aac" style="display:none;">
             </span>
           </div>
           <div class="settings-row sound-row">
             <span class="settings-label">Connect Fail</span>
             <span class="settings-value sound-picker">
-              <input type="text" id="sound-connectFail" class="settings-input sound-path" placeholder="(default beep)" readonly aria-label="Connect fail sound file">
-              <button class="btn-sm sound-load" data-type="connectFail" aria-label="Load connect fail sound">📁</button>
-              <button class="btn-sm sound-clear" data-type="connectFail" aria-label="Reset connect fail sound">✕</button>
-              <button class="btn-sm sound-test" data-type="connectFail" aria-label="Test connect fail sound">▶</button>
+              <select class="settings-select sound-preset" data-type="connectFail" aria-label="Connect Fail alert sound">
+                <option value="">DEFAULT BEEP</option>
+              </select>
+              <input type="hidden" id="sound-connectFail">
+              <button class="btn-sm sound-load" data-type="connectFail" aria-label="Choose a custom connect fail sound file">📁</button>
+              <button class="btn-sm sound-clear" data-type="connectFail" aria-label="Reset connect fail sound to the default beep">✕</button>
+              <button class="btn-sm sound-test" data-type="connectFail" aria-label="Preview the connect fail sound">▶</button>
               <input type="file" class="sound-file-input" data-type="connectFail" accept=".wav,.mp3,.ogg,.m4a,.aac" style="display:none;">
             </span>
           </div>
@@ -661,6 +738,16 @@
           <div class="settings-row">
             <span class="settings-label">Network Threshold (Mbps)</span>
             <input type="number" id="setting-alert-net" class="settings-input" min="0" max="10000" value="800" aria-label="Network alert threshold">
+          </div>
+          <div class="settings-row">
+            <label class="settings-label" for="setting-log-watch">Log Watch Terms</label>
+            <textarea id="setting-log-watch" class="settings-input settings-textarea" rows="2"
+              placeholder="error, fail, denied"
+              aria-describedby="setting-log-watch-hint"></textarea>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label"></span>
+            <span class="settings-hint" id="setting-log-watch-hint">Comma-separated. Matched case-insensitively against new lines in the polled log file. Empty disables log alerts.</span>
           </div>
         </div>
         <div class="settings-section">
@@ -687,5 +774,6 @@
   <script src="vendor/xterm/xterm.min.js"></script>
   <script src="vendor/xterm/xterm-addon-fit.min.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/layout.js"></script>
 </body>
 </html>

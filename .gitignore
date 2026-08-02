@@ -20,3 +20,4 @@ TODO.md
 
 # Automated audit reports (regenerated each run)
 reports/
+.claude/

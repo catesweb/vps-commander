@@ -16,6 +16,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - name: Verify docs TOC anchors, relative links, and live external links
         run: node scripts/docs-freshness.js --external

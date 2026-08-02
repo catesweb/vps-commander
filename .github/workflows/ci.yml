@@ -71,13 +71,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - name: Install dependencies
         run: npm ci
       - name: Syntax check all source files
         run: |
-          for f in main.js server.js ssh-handler.js settings.js crypto-util.js app-logger.js scripts/smoke-test.js public/js/app.js; do
+          for f in main.js server.js ssh-handler.js settings.js crypto-util.js app-logger.js scripts/smoke-test.js scripts/layout-check.js scripts/terminal-check.js scripts/terminal-focus-check.js scripts/log-watch-check.js public/js/app.js public/js/layout.js; do
             echo "== $f"
             node --check "$f"
           done
@@ -101,7 +101,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - name: Verify docs TOC anchors and relative links
         run: node scripts/docs-freshness.js
 
@@ -112,12 +112,41 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - name: Install dependencies
         run: npm ci
       - name: Boot server and verify API endpoints
         run: node scripts/smoke-test.js
+      # Separate from the smoke test: this one stubs the SSH layer and drives the
+      # WebSocket, so it covers the terminal transport the REST checks never touch.
+      - name: Verify terminal input reaches the shell stream
+        run: node scripts/terminal-check.js
+      # Pure-function check: the log-watch scanner must only alert on lines that
+      # are new since the previous poll. No server or browser needed.
+      - name: Verify log-watch scans only new lines
+        run: node scripts/log-watch-check.js
+
+  layout:
+    name: Layout regression probe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # playwright-core does NOT download browsers. The ubuntu runner image ships
+      # Google Chrome, which `channel: 'chrome'` picks up; Edge is the fallback.
+      - name: Assert layout invariants at every supported window size
+        run: npm run layout
+      # The transport check above cannot see the DOM half of terminal input: a
+      # click that never lands focus on xterm's textarea types nothing and raises
+      # nothing. This drives a real browser to assert the click-to-focus path.
+      - name: Assert the terminal takes focus and keystrokes
+        run: npm run terminal-focus
 
   package:
     name: Package check (${{ matrix.os }})
@@ -131,7 +160,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - name: Install dependencies
         run: npm ci

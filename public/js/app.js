@@ -233,6 +233,10 @@ async function init() {
   }
   await loadSettings();
   await loadProfiles();
+  // Desktop notifications for log-watch alerts raised while the window is blurred.
+  if (window.Notification && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
   updateClock();
   setInterval(updateClock, 1000);
   bindEvents();
@@ -394,18 +398,13 @@ function applySettings() {
   $('#setting-alert-mem').value = s.alertMem || 90;
   $('#setting-alert-disk').value = s.alertDisk || 90;
   $('#setting-alert-net').value = s.alertNetMbps || 800;
-  // Sound file paths
+  $('#setting-log-watch').value = (s.logWatch || []).join(', ');
+  // Sound selections — preload each so the first alert doesn't wait on a fetch
   if (s.alertSounds) {
-    const types = ['cpu', 'memory', 'disk', 'network', 'connectOk', 'connectFail'];
-    types.forEach(t => {
-      const el = $('#sound-' + t);
-      if (el) {
-        const path = (s.alertSounds[t] && s.alertSounds[t].file) || '';
-        el.value = path;
-        el.placeholder = path ? path.split(/[\\/]/).pop() : '(default beep)';
-        // Preload the file if it exists
-        if (path) loadSoundFile(t, path).catch(() => {});
-      }
+    SOUND_TYPES.forEach(t => {
+      const path = (s.alertSounds[t] && s.alertSounds[t].file) || '';
+      setSoundValue(t, path);
+      if (path) loadSoundFile(t, path).catch(() => {});
     });
   }
 }
@@ -420,18 +419,14 @@ async function saveSettingsAndClose() {
     logLines: parseInt($('#setting-loglines').value) || 200,
     alertEnabled: $('#setting-alert-enabled').checked,
     alertSound: $('#setting-alert-sound').checked,
-    alertSounds: {
-      cpu:       { enabled: true, file: $('#sound-cpu').value || '' },
-      memory:    { enabled: true, file: $('#sound-memory').value || '' },
-      disk:      { enabled: true, file: $('#sound-disk').value || '' },
-      network:   { enabled: true, file: $('#sound-network').value || '' },
-      connectOk: { enabled: true, file: $('#sound-connectOk').value || '' },
-      connectFail: { enabled: true, file: $('#sound-connectFail').value || '' },
-    },
+    alertSounds: Object.fromEntries(SOUND_TYPES.map(t => [
+      t, { enabled: true, file: ($('#sound-' + t) || {}).value || '' },
+    ])),
     alertCpu: parseInt($('#setting-alert-cpu').value) || 90,
     alertMem: parseInt($('#setting-alert-mem').value) || 90,
     alertDisk: parseInt($('#setting-alert-disk').value) || 90,
     alertNetMbps: parseInt($('#setting-alert-net').value) || 800,
+    logWatch: $('#setting-log-watch').value.split(',').map(p => p.trim()).filter(Boolean),
   };
   await fetch(`${API}/api/settings`, {
     method: 'POST',
@@ -452,6 +447,12 @@ async function loadProfiles() {
     const data = await res.json();
     State.profiles = data.profiles || [];
     renderProfileSelect();
+    // Auto-load the last profile connected from this machine
+    const last = localStorage.getItem('vpsc.lastProfile');
+    if (last && State.profiles.some(p => p.id === last)) {
+      dom.profileSelect.value = last;
+      dom.profileSelect.dispatchEvent(new Event('change'));
+    }
   } catch {}
 }
 
@@ -485,8 +486,8 @@ dom.profileSelect.addEventListener('change', async () => {
     dom.connPass.value = '';
     dom.profileDelete.style.display = 'inline-block';
 
-    // Fetch decrypted password for this profile
-    if (profile.hasPassword) {
+    // Fetch decrypted password/key for this profile
+    if (profile.hasPassword || profile.hasPrivateKey) {
       dom.connPass.placeholder = '•••• (loading)...';
       try {
         const res = await fetch(`${API}/api/profiles/${id}/auth`);
@@ -607,6 +608,8 @@ async function connectToServer() {
     if (!res.ok) throw new Error((await res.json()).error || 'Connection failed');
 
     const { sessionId } = await res.json();
+
+    if (dom.profileSelect.value) localStorage.setItem('vpsc.lastProfile', dom.profileSelect.value);
 
     State.prevNetRx = null; State.prevNetTx = null;
     State.sessions[sessionId] = { host, port, username, label, sessionId, statsInterval: null, servicesInterval: null, logsInterval: null };
@@ -759,6 +762,7 @@ function switchToSession(sessionId) {
   if (State.term) { State.term.dispose(); State.term = null; }
 
   State.activeSession = sessionId;
+  resetLogWatch();  // different host: the old anchor line means nothing here
   State.history = { cpu: [], mem: [], disk: [], netTx: [], netRx: [] };
   State.prevNetRx = null; State.prevNetTx = null;
   const session = State.sessions[sessionId];
@@ -887,12 +891,75 @@ const ALERT_TONES = {
   network:   { freqs: [1100, 1650],  type: 'triangle', label: 'Network Alert' },
   connectOk: { freqs: [523, 659, 784], type: 'sine', label: 'Connect OK' },
   connectFail: { freqs: [200, 150],  type: 'sawtooth', label: 'Connect Fail' },
+  logWatch:  { freqs: [1400, 700, 1400], type: 'square', label: 'Log Watch' },
 };
+
+// A stored sound is either a bundled preset ("/sounds/foo.wav", served static)
+// or an absolute path to a user file the server copied into ~/.vps-commander.
+function isPresetSound(file) { return typeof file === 'string' && file.startsWith('/sounds/'); }
+
+const SOUND_TYPES = ['cpu', 'memory', 'disk', 'network', 'logWatch', 'connectOk', 'connectFail'];
+
+// "mixkit-classic-alarm-995.wav" → "CLASSIC ALARM"
+function presetLabel(filename) {
+  return filename
+    .replace(/\.[^.]+$/, '')
+    .replace(/^mixkit-/, '')
+    .replace(/-\d+$/, '')
+    .replace(/[-_]/g, ' ')
+    .toUpperCase();
+}
+
+// Sets the stored value (hidden input) and makes the dropdown agree. A custom
+// file has no preset option, so one is added on the fly and reused thereafter.
+function setSoundValue(type, value, displayName) {
+  const hidden = $('#sound-' + type);
+  const select = document.querySelector('.sound-preset[data-type="' + type + '"]');
+  if (!hidden || !select) return;
+  hidden.value = value || '';
+  if (!value) { select.value = ''; return; }
+  let opt = Array.from(select.options).find(o => o.value === value);
+  if (!opt) {
+    opt = document.createElement('option');
+    opt.value = value;
+    select.appendChild(opt);
+  }
+  const name = value.split(/[\\/]/).pop();
+  // A saved selection can be restored before populateSoundPresets() has run, so
+  // label it here too — otherwise the restored option renders blank.
+  opt.textContent = isPresetSound(value) ? presetLabel(name) : 'CUSTOM: ' + (displayName || name);
+  select.value = value;
+}
+
+// Fills every dropdown from the bundled sounds in public/sounds/. Safe to run
+// before or after settings load — existing selections are preserved.
+async function populateSoundPresets() {
+  let presets = [];
+  try {
+    const res = await fetch('/api/sounds');
+    presets = (await res.json()).presets || [];
+  } catch {
+    return; // dropdowns still offer the default beep
+  }
+  document.querySelectorAll('.sound-preset').forEach(select => {
+    const current = select.value;
+    presets.forEach(name => {
+      const value = '/sounds/' + name;
+      if (Array.from(select.options).some(o => o.value === value)) return;
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = presetLabel(name);
+      select.appendChild(opt);
+    });
+    select.value = current;
+  });
+}
 
 async function loadSoundFile(type, file) {
   if (!file) return null;
   try {
-    const res = await fetch('/api/sound?path=' + encodeURIComponent(file));
+    const url = isPresetSound(file) ? file : '/api/sound?path=' + encodeURIComponent(file);
+    const res = await fetch(url);
     if (!res.ok) return null;
     const arrayBuf = await res.arrayBuffer();
     const ctx = await getAlertAudio();
@@ -953,6 +1020,65 @@ async function playAlertSound(type) {
 
 // Backward compat
 function playAlertBeep() { playAlertSound('cpu').catch(() => {}); }
+
+// ── LOG WATCH ────────────────────────────────────────────
+// Scans each polled log tail for watch-list substrings and raises the same
+// alert channels the metric thresholds use (sound + audit log + desktop
+// notification). No new transport — it rides the existing logs poll.
+
+// Pure so scripts/log-watch-check.js can eval it out of this file.
+// `anchor` is the last non-empty line of the previous scan, or null on the
+// first poll (which is skipped so a backlog of old errors doesn't alert).
+// ponytail: anchor is matched by content, so a log with repeated identical
+// lines can resync to the wrong one and skip a few. Switch to journalctl
+// --cursor / a server-side tail if that matters.
+function matchLogWatch(text, anchor, patterns) {
+  const lines = String(text || '').split('\n');
+  const nextAnchor = lines.slice().reverse().find(l => l.trim()) || anchor || null;
+  let start = 0;
+  if (anchor === null || anchor === undefined) {
+    start = lines.length;               // first poll: establish the anchor only
+  } else {
+    const i = lines.lastIndexOf(anchor);
+    if (i >= 0) start = i + 1;          // i < 0 => rotated/scrolled past, scan all
+  }
+  for (const line of lines.slice(start)) {
+    if (!line.trim()) continue;
+    const hit = (patterns || []).find(p => p && line.toLowerCase().includes(String(p).toLowerCase()));
+    if (hit) return { hit, line: line.trim(), anchor: nextAnchor };
+  }
+  return { hit: null, line: null, anchor: nextAnchor };
+}
+
+let logWatchAnchor = null;
+
+function resetLogWatch() { logWatchAnchor = null; }
+
+function scanLogs(text) {
+  const s = State.settings;
+  if (!s.alertEnabled) return;
+  const patterns = s.logWatch || [];
+  if (!patterns.length) { logWatchAnchor = null; return; }
+
+  const { hit, line, anchor } = matchLogWatch(text, logWatchAnchor, patterns);
+  logWatchAnchor = anchor;
+  if (!hit) return;
+
+  // One alert per poll cycle, not one per matching line.
+  playAlertSound('logWatch').catch(() => {});
+  const file = $('#log-selector').value;
+  if (!document.hasFocus() && window.Notification && Notification.permission === 'granted') {
+    new Notification(`LOG ALERT // ${file}`, { body: line.slice(0, 200) });
+  }
+  fetch(`${API}/api/audit-log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'ALERT',
+      message: `Log match "${hit}" in ${file}: ${line.slice(0, 200)} [${State.activeSession}]`,
+    }),
+  }).catch(() => {});
+}
 
 // ── ALERT THRESHOLDS ─────────────────────────────────────
 function checkAlerts(data) {
@@ -1908,12 +2034,14 @@ async function refreshLogs(sessionId) {
     const data = await res.json();
     dom.logContainer.textContent = data.logs || 'NO DATA';
     dom.logContainer.scrollTop = dom.logContainer.scrollHeight;
+    scanLogs(data.logs || '');
   } catch {
     dom.logContainer.textContent = 'ERROR READING LOGS';
   }
 }
 
 $('#log-selector').addEventListener('change', () => {
+  resetLogWatch();  // different file: the old anchor line means nothing here
   if (State.activeSession) refreshLogs(State.activeSession);
 });
 $('#log-refresh').addEventListener('click', () => {
@@ -1952,7 +2080,20 @@ function initTerminal(sessionId) {
     resizeTimer = setTimeout(() => { try { fitAddon.fit(); } catch {} }, 100);
   });
   observer.observe(container);
-  setTimeout(() => { try { fitAddon.fit(); } catch {} }, 200);
+  setTimeout(() => { try { fitAddon.fit(); } catch {} State.term.focus(); }, 200);
+
+  // xterm only claims clicks that land on its own screen. The container padding
+  // and the dead band below the last row belong to us, and they are a wide
+  // target — clicking there used to leave focus wherever it was, so the terminal
+  // rendered fine and silently ignored the keyboard.
+  // preventDefault matters as much as the focus() call: mousedown on a
+  // non-focusable element blurs whatever had focus as its default action, so
+  // focusing first and letting the default run just blurs it again a tick later.
+  container.addEventListener('mousedown', (e) => {
+    if (!State.term || e.target.closest('.xterm-screen')) return;
+    e.preventDefault();
+    State.term.focus();
+  });
 
   const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   State.termSocket = new WebSocket(`${wsProto}//${location.host}`);
@@ -1983,10 +2124,13 @@ function initTerminal(sessionId) {
     }
   });
 
-  $('#term-clear').addEventListener('click', () => {
-    if (State.term) State.term.clear();
-  });
 }
+
+// Bound once, not per initTerminal — switching sessions re-inits the terminal and
+// would otherwise stack a new listener on the same button every time.
+$('#term-clear').addEventListener('click', () => {
+  if (State.term) { State.term.clear(); State.term.focus(); }
+});
 
 // ── AUDIT LOG ────────────────────────────────────────────
 function initAuditLog() {
@@ -2195,33 +2339,64 @@ function bindEvents() {
     });
   });
 
+  populateSoundPresets();
+
+  // Picking a bundled preset — decode it now so ▶ plays it without a round trip
+  document.querySelectorAll('.sound-preset').forEach(select => {
+    select.addEventListener('change', async () => {
+      const type = select.dataset.type;
+      const value = select.value;
+      setSoundValue(type, value);
+      delete State.soundCache[type];
+      if (value && !(await loadSoundFile(type, value))) {
+        setSoundValue(type, '');
+        select.setAttribute('aria-invalid', 'true');
+        return;
+      }
+      select.removeAttribute('aria-invalid');
+    });
+  });
+
   document.querySelectorAll('.sound-file-input').forEach(input => {
-    input.addEventListener('change', (e) => {
+    input.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       const type = input.dataset.type;
-      const pathEl = $('#sound-' + type);
-      if (!file || !pathEl) return;
-      pathEl.value = file.path;
-      pathEl.placeholder = file.name;
-      // Load into cache
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        try {
-          const ctx = getAlertAudio();
-          if (!ctx) return;
-          const audioBuf = await ctx.decodeAudioData(ev.target.result);
-          State.soundCache[type] = audioBuf;
-        } catch {}
-      };
-      reader.readAsArrayBuffer(file);
+      if (!file) return;
+      const bytes = await file.arrayBuffer();
+      // decodeAudioData detaches the buffer it's given — decode a copy so the
+      // original bytes survive for the upload below.
+      try {
+        const ctx = await getAlertAudio();
+        if (ctx) State.soundCache[type] = await ctx.decodeAudioData(bytes.slice(0));
+      } catch {
+        setSoundValue(type, '');
+        delete State.soundCache[type];
+        return;
+      }
+      // Electron hides the picked file's real path, so hand the bytes to the
+      // server and persist the copy it keeps.
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      try {
+        const res = await fetch(`/api/sound/${type}?ext=${encodeURIComponent(ext)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: bytes,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        setSoundValue(type, data.path, file.name);
+      } catch {
+        // Decoded but not persisted — usable now, gone on restart.
+        setSoundValue(type, '');
+      }
+      input.value = '';
     });
   });
 
   document.querySelectorAll('.sound-clear').forEach(btn => {
     btn.addEventListener('click', () => {
       const type = btn.dataset.type;
-      const pathEl = $('#sound-' + type);
-      if (pathEl) { pathEl.value = ''; pathEl.placeholder = '(default beep)'; }
+      setSoundValue(type, '');
       delete State.soundCache[type];
     });
   });

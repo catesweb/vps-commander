@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       # Offline TOC/anchor + relative-link check — same gate as ci.yml's `docs`
       # job. Deterministic (no network), so a release never ships with broken
       # doc anchors or missing link targets. Live external-link probing stays
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - name: Install dependencies
         run: npm ci

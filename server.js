@@ -727,7 +727,7 @@ app.get('/api/profiles', requireUnlocked, (req, res) => {
 });
 
 // Get full profile with decrypted password (for loading into connection form)
-app.get('/api/profiles/:id/auth', (req, res) => {
+app.get('/api/profiles/:id/auth', requireUnlocked, (req, res) => {
   const profiles = settings.getProfiles();
   const profile = profiles.find(p => p.id === req.params.id);
   if (!profile) return res.status(404).json({ error: 'Profile not found' });
@@ -750,6 +750,23 @@ app.delete('/api/profiles/:id', requireUnlocked, (req, res) => {
 });
 
 // ── Sound API ────────────────────────────────────────────
+// Bundled alert sounds shipped in public/sounds/. They're already served as
+// static files, but the renderer needs to know what's there to build the
+// preset dropdowns — express has no directory listing.
+app.get('/api/sounds', (req, res) => {
+  try {
+    const fs = require('fs');
+    const dir = path.join(__dirname, 'public', 'sounds');
+    if (!fs.existsSync(dir)) return res.json({ presets: [] });
+    const presets = fs.readdirSync(dir)
+      .filter(f => /\.(wav|mp3|ogg|m4a|aac|flac|weba)$/i.test(f))
+      .sort();
+    res.json({ presets });
+  } catch {
+    res.json({ presets: [] });
+  }
+});
+
 app.get('/api/sound', (req, res) => {
   const filePath = req.query.path;
   if (!filePath) return res.status(400).json({ error: 'path required' });
@@ -770,6 +787,35 @@ app.get('/api/sound', (req, res) => {
     res.send(data);
   } catch {
     res.status(500).json({ error: 'Failed to read audio file' });
+  }
+});
+
+// Upload a custom alert sound. The renderer can't read the picked file's
+// absolute path (Electron dropped File.path in v32), so it POSTs the bytes
+// and we keep our own copy under ~/.vps-commander/sounds/ — that path is what
+// gets persisted in settings and replayed by GET /api/sound.
+app.post('/api/sound/:type', express.raw({ type: '*/*', limit: '25mb' }), (req, res) => {
+  const type = req.params.type;
+  if (!/^[a-zA-Z]+$/.test(type)) return res.status(400).json({ error: 'Invalid sound type' });
+  const ext = String(req.query.ext || '').toLowerCase();
+  if (!/^(wav|mp3|ogg|m4a|aac|flac|weba)$/.test(ext)) {
+    return res.status(400).json({ error: 'Invalid audio file type' });
+  }
+  if (!req.body || !req.body.length) return res.status(400).json({ error: 'Empty upload' });
+  try {
+    const fs = require('fs');
+    const os = require('os');
+    const dir = path.join(os.homedir(), '.vps-commander', 'sounds');
+    fs.mkdirSync(dir, { recursive: true });
+    // One file per type — replacing a sound overwrites, so no orphans accumulate.
+    for (const old of fs.readdirSync(dir)) {
+      if (old.startsWith(type + '.')) fs.unlinkSync(path.join(dir, old));
+    }
+    const dest = path.join(dir, `${type}.${ext}`);
+    fs.writeFileSync(dest, req.body);
+    res.json({ path: dest });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save audio file: ' + err.message });
   }
 });
 
@@ -812,6 +858,12 @@ process.on('unhandledRejection', (reason) => {
 // ── WebSocket (Terminal per session) ──────────────────────
 wss.on('connection', (ws) => {
   let shellStream = null;
+  // Connection-scoped. This used to be a `const sid` inside the terminal:init
+  // branch, so the input and resize branches referenced an identifier that did
+  // not exist in their scope — every keystroke threw ReferenceError before
+  // reaching shellStream.write() and the catch below swallowed it. The terminal
+  // rendered, focused, and echoed nothing.
+  let sessionId = null;
 
   ws.on('message', async (msg) => {
     try {
@@ -820,6 +872,7 @@ wss.on('connection', (ws) => {
       if (data.type === 'terminal:init') {
         const sid = data.sessionId;
         if (!sid) { ws.send(JSON.stringify({ type: 'error', data: 'No sessionId' })); return; }
+        sessionId = sid;
         touchSession(sid);
         try {
           shellStream = await ssh.shell(sid);
@@ -839,16 +892,21 @@ wss.on('connection', (ws) => {
       }
 
       if (data.type === 'terminal:input' && shellStream) {
-        touchSession(sid);
+        touchSession(sessionId);
         shellStream.write(data.data);
       }
 
       if (data.type === 'terminal:resize' && shellStream) {
-        touchSession(sid);
+        touchSession(sessionId);
         shellStream.setWindow(data.rows, data.cols, 0, 0);
       }
-    } catch {
-      // skip malformed messages
+    } catch (err) {
+      // Malformed frames are expected and ignorable, but a bare `catch {}` here
+      // hid a ReferenceError that broke terminal input entirely. Log everything
+      // that is not a JSON parse failure so the next one surfaces.
+      if (!(err instanceof SyntaxError)) {
+        appLogger.log({ source: 'SERVER', level: 'ERROR', message: 'Terminal socket message failed: ' + err.message, extra: { stack: err.stack } });
+      }
     }
   });
 

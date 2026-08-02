@@ -27,6 +27,24 @@
   --font-sans: 'Barlow', 'Helvetica Neue', sans-serif;
   --font-display: 'Barlow Condensed', 'Barlow', sans-serif;
 
+  /* Type scale. Every font-size in this file comes from here — no bare px, so
+     the whole UI is legible-by-default and tunable from one place.
+     The old scale bottomed out at 8px and put 54 of its 64 declarations at
+     10px or below, which is unreadable at a normal desk viewing distance
+     (~3ft). A dense terminal UI earns small type; it does not earn 8px.
+     --ui-scale is the user knob (Settings > UI SCALE): eyesight, display DPI,
+     and viewing distance are physical variables no fixed scale can guess right.
+     Multiplying the tokens rather than zooming the page keeps the layout boxes
+     at their real size instead of shrinking the viewport underneath them. */
+  --ui-scale: 1;
+  --fs-xs: calc(10px * var(--ui-scale));  /* was 8px  — dense table buttons */
+  --fs-sm: calc(11px * var(--ui-scale));  /* was 9px  — table cells, log text */
+  --fs-md: calc(12px * var(--ui-scale));  /* was 10px — labels, tabs, controls */
+  --fs-base: calc(13px * var(--ui-scale));/* was 11px — body, header */
+  --fs-lg: calc(14px * var(--ui-scale));  /* was 12px — buttons, status */
+  --fs-xl: calc(15px * var(--ui-scale));  /* was 13px — inputs, terminal */
+  --fs-2xl: calc(17px * var(--ui-scale)); /* was 15px — modal titles */
+
   /* Motion tokens — strong ease-out for entrances, ease-in-out for movement */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-inout: cubic-bezier(0.77, 0, 0.175, 1);
@@ -47,17 +65,23 @@
 
 html, body {
   height: 100%; background: var(--bg); color: var(--fg);
-  font-family: var(--font-mono); font-size: 12px; overflow: hidden;
+  font-family: var(--font-mono); font-size: var(--fs-lg); overflow: hidden;
   user-select: none; -webkit-user-select: none; -webkit-font-smoothing: antialiased;
   scroll-padding-top: 48px; /* fixed header never covers focused targets */
 }
+/* header / main / footer as a flex column so the dashboard measures the space
+   actually left over. It used to be height:calc(100vh - 52px), i.e. a hardcoded
+   32px header + 20px status bar — the moment the header wrapped to a second row
+   the dashboard ran past the viewport and body{overflow:hidden} clipped it. */
+body { display: flex; flex-direction: column; }
+.header-bar, .status-bar { flex-shrink: 0; }
 
 /* Skip-to-content link: off-screen until focused, then visible (WCAG 2.4.1) */
 .skip-link {
   position: fixed; top: 0; left: 0; z-index: calc(var(--z-modal) + 1);
   transform: translateY(-200%);
   background: var(--bg-elevated); color: var(--fg); border: 1px solid var(--border-active);
-  border-top: none; padding: 8px 14px; font-size: 10px; letter-spacing: 0.06em;
+  border-top: none; padding: 8px 14px; font-size: var(--fs-md); letter-spacing: 0.06em;
   transition: transform var(--dur-fast) ease;
 }
 .skip-link:focus-visible { transform: translateY(0); }
@@ -120,23 +144,29 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 }
 
 /* HEADER */
-.header-bar { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
-  height: 32px; padding: 0 12px; background: var(--bg-elevated);
-  border-bottom: 2px solid var(--red); font-size: 11px; letter-spacing: 0.08em; gap: 8px; }
+/* Wraps rather than crushes. As a 3-column grid the centre track (server tabs +
+   connection state) was squeezed to ~12px and hidden behind its own overflow once
+   the brand and the right-hand controls claimed the width. Flex + wrap moves it to
+   its own line instead — safe now that nothing hardcodes the header's height. */
+.header-bar { display: flex; flex-wrap: wrap; align-items: center;
+  min-height: 32px; padding: 2px 12px; background: var(--bg-elevated);
+  border-bottom: 2px solid var(--red); font-size: var(--fs-base); letter-spacing: 0.08em;
+  gap: 8px; row-gap: 2px; }
 .header-brand { color: var(--red-bright); font-family: var(--font-display); font-weight: 700;
-  letter-spacing: 0.12em; font-size: 13px; white-space: nowrap; display: flex; align-items: center; }
+  letter-spacing: 0.12em; font-size: var(--fs-xl); white-space: nowrap; display: flex; align-items: center; }
 .header-rev { color: var(--fg-dim); }
 .header-unit { color: var(--fg-mid); }
 .header-time { color: var(--green); font-weight: 500; }
 .header-sep { color: var(--border-active); margin: 0 6px; }
-.header-center { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; overflow: hidden; }
-.header-right { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
-.header-left { display: flex; align-items: center; }
+.header-center { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap;
+  flex: 1 1 180px; min-width: 0; }
+.header-right { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex: 0 0 auto; margin-left: auto; }
+.header-left { display: flex; align-items: center; flex: 0 0 auto; min-width: 0; }
 
 /* SERVER TABS */
 .server-tab {
   background: none; border: 1px solid transparent; font-family: inherit;
-  color: var(--fg-dim); font-size: 10px; line-height: inherit; padding: 3px 8px; cursor: pointer;
+  color: var(--fg-dim); font-size: var(--fs-md); line-height: inherit; padding: 3px 8px; cursor: pointer;
   letter-spacing: 0.06em; white-space: nowrap;
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease,
               transform var(--dur-fast) var(--ease-out);
@@ -150,7 +180,7 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .connect-card { background: var(--bg-elevated); border: 1px solid var(--border-active);
   padding: 32px 40px; width: 560px; max-width: 95vw; }
 .connect-title { font-family: var(--font-display); font-weight: 700;
-  font-size: clamp(1.2rem, 3vw, 1.6rem); letter-spacing: 0.1em; color: var(--red);
+  font-size: calc(clamp(1.3rem, 3vw, 1.7rem) * var(--ui-scale)); letter-spacing: 0.1em; color: var(--red);
   text-align: center; margin-bottom: 20px; text-transform: uppercase; }
 .connect-title.typing::after {
   content: '▌';
@@ -165,20 +195,20 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .connect-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
 .connect-field { display: flex; flex-direction: column; gap: 4px; }
 .connect-field-full { grid-column: 1 / -1; }
-.connect-label { font-size: 10px; color: var(--fg-mid); letter-spacing: 0.1em; }
+.connect-label { font-size: var(--fs-md); color: var(--fg-mid); letter-spacing: 0.1em; }
 .connect-input { background: var(--bg); border: 1px solid var(--border); color: var(--fg);
-  font-family: var(--font-mono); font-size: 13px; padding: 8px 10px; outline: none;
+  font-family: var(--font-mono); font-size: var(--fs-xl); padding: 8px 10px; outline: none;
   transition: border-color var(--dur-fast) ease; }
 .connect-input:focus { border-color: var(--red); }
 .connect-input::placeholder { color: var(--fg-dim); }
 .connect-actions { display: flex; align-items: center; gap: 16px; }
-.connect-status { font-size: 10px; color: var(--fg-dim); letter-spacing: 0.06em; }
+.connect-status { font-size: var(--fs-md); color: var(--fg-dim); letter-spacing: 0.06em; }
 
 /* AUTH TOGGLE */
 .auth-toggle { display: flex; gap: 4px; margin-bottom: 6px; }
 .auth-toggle-btn {
   flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--fg-dim);
-  font-family: var(--font-mono); font-size: 10px; padding: 5px 12px; cursor: pointer;
+  font-family: var(--font-mono); font-size: var(--fs-md); padding: 5px 12px; cursor: pointer;
   letter-spacing: 0.08em;
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out), background var(--dur-fast) ease;
 }
@@ -186,31 +216,31 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .auth-toggle-btn:active { transform: scale(0.97); }
 .auth-toggle-btn.active, .auth-toggle-btn.tab-active { color: var(--fg); border-color: var(--red); font-weight: 700; background: var(--bg-elevated); }
 .key-textarea {
-  resize: vertical; min-height: 80px; font-size: 11px !important; line-height: 1.4;
+  resize: vertical; min-height: 80px; font-size: var(--fs-base) !important; line-height: 1.4;
   letter-spacing: 0.02em; word-break: break-all;
 }
 .key-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.key-status { font-size: 9px; color: var(--fg-dim); letter-spacing: 0.04em; }
+.key-status { font-size: var(--fs-sm); color: var(--fg-dim); letter-spacing: 0.04em; }
 .key-status.loaded { color: var(--green); }
 
 /* PROFILE BAR */
 .profile-bar { display: flex; gap: 6px; margin-bottom: 16px; align-items: center; }
 .profile-select { flex: 1; background: var(--bg); border: 1px solid var(--border);
-  color: var(--fg-mid); font-family: var(--font-mono); font-size: 11px;
+  color: var(--fg-mid); font-family: var(--font-mono); font-size: var(--fs-base);
   padding: 6px 8px; outline: none; }
 .profile-select:focus { border-color: var(--red); }
 
 /* BUTTONS */
 .btn-connect {
   background: var(--red); color: #FFFFFF; border: none;
-  font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+  font-family: var(--font-mono); font-size: var(--fs-lg); font-weight: 700;
   letter-spacing: 0.15em; padding: 10px 28px; cursor: pointer;
   display: flex; align-items: center; gap: 8px;
   transition: background var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out);
 }
 .btn-connect:hover { background: var(--red-bright); }
 .btn-connect:active { transform: scale(0.97); background: var(--red-dim); }
-.btn-icon { display: inline-flex; align-items: center; font-size: 10px; }
+.btn-icon { display: inline-flex; align-items: center; font-size: var(--fs-md); }
 .btn-icon-only {
   background: none; border: 1px solid var(--border); color: var(--fg-dim);
   padding: 3px 5px; cursor: pointer; font-family: var(--font-mono);
@@ -221,7 +251,7 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .btn-icon-only:active { transform: scale(0.92); }
 .btn-sm {
   background: var(--bg-elevated); border: 1px solid var(--border); color: var(--fg-mid);
-  font-family: var(--font-mono); font-size: 10px; padding: 3px 10px; cursor: pointer;
+  font-family: var(--font-mono); font-size: var(--fs-md); padding: 3px 10px; cursor: pointer;
   letter-spacing: 0.06em; display: inline-flex; align-items: center; gap: 5px;
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out);
 }
@@ -231,14 +261,25 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .btn-danger:hover { border-color: var(--red); color: var(--red); }
 
 /* DASHBOARD */
-.dashboard { display: flex; flex-direction: column; height: calc(100vh - 52px); gap: var(--gap); background: var(--bg); }
-.dashboard-view { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--gap); }
-.stats-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--gap);
+.dashboard { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto;
+  gap: var(--gap); background: var(--bg); }
+/* Floor, not a fixed height: below this the panels stop shrinking and .dashboard
+   scrolls instead. Squashing 7 stat blocks + terminal + side panel + bottom row
+   into a 600px-tall window gave every panel ~0 usable height — the UI looked cut
+   off even though nothing overflowed horizontally. */
+.dashboard-view { display: flex; flex-direction: column; flex: 1; min-height: 640px; gap: var(--gap); }
+/* flex-wrap, not grid: there are 7 stat blocks. Any fixed column count that isn't
+   7 orphans one onto a second row and leaves the rest of that row as dead panel
+   background (repeat(6) did exactly that at every width). Wrapped flex items
+   stretch to fill their row, so a wrap is never a gap. min-width:0 keeps a nowrap
+   stat value from setting a floor wider than the window. */
+.stats-row { display: flex; flex-wrap: wrap; gap: var(--gap);
   background: var(--border); border-bottom: 2px solid var(--red); }
-.stat-block { background: var(--bg-panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
-.stat-label { font-size: 9px; letter-spacing: 0.1em; color: var(--fg-dim); }
+.stat-block { background: var(--bg-panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+  flex: 1 1 190px; min-width: 0; }
+.stat-label { font-size: var(--fs-sm); letter-spacing: 0.1em; color: var(--fg-dim); }
 .stat-value { font-family: var(--font-display); font-weight: 700;
-  font-size: clamp(1.3rem, 2.5vw, 2rem); letter-spacing: -0.02em; color: var(--fg); line-height: 1.05;
+  font-size: calc(clamp(1.4rem, 2.5vw, 2rem) * var(--ui-scale)); letter-spacing: -0.02em; color: var(--fg); line-height: 1.05;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stat-bar { height: 3px; background: var(--border); margin-top: 2px; }
 .stat-bar-fill { height: 100%; background: var(--green); width: 0%;
@@ -248,17 +289,60 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .stat-chart { width: 100%; height: 28px; margin-top: 2px; display: block; }
 
 /* MAIN ROW */
-.main-row { display: grid; grid-template-columns: 1fr 320px; gap: var(--gap); background: var(--border); flex: 1; min-height: 0; }
+/* The middle track is the drag handle. Sizes come from custom properties so a
+   splitter drag is one style write, and so a persisted layout restores by
+   setting three numbers instead of rewriting grid templates. */
+.main-row { display: grid; grid-template-columns: minmax(0, 1fr) 9px var(--side-w, 320px);
+  gap: var(--gap); background: var(--border); flex: 1; min-height: 0; }
+
+/* SPLITTERS */
+/* The element is a 9px grab target; the visible rule is the 5px inner pseudo.
+   Inset INWARD deliberately — an outward-inset hit area (inset: 0 -3px) makes
+   scrollWidth exceed clientWidth, which is indistinguishable from clipped
+   content to any overflow check, including scripts/layout-check.js. */
+.splitter { background: transparent; position: relative; touch-action: none; border: none; padding: 0; }
+.splitter::before { content: ''; position: absolute; background: var(--border);
+  transition: background var(--dur-fast) ease; }
+.splitter-col { cursor: col-resize; }
+.splitter-col::before { inset: 0 2px; }
+.splitter-row { cursor: row-resize; height: 9px; flex: 0 0 9px; }
+.splitter-row::before { inset: 2px 0; }
+.splitter:hover::before, .splitter:focus-visible::before { background: var(--red); }
+.splitter:focus-visible { outline: 1px solid var(--green); outline-offset: -1px; }
+/* While dragging, keep the cursor and stop panels from swallowing pointermove. */
+body.is-resizing * { pointer-events: none; user-select: none; }
+body.is-resizing.resizing-col { cursor: col-resize; }
+body.is-resizing.resizing-row { cursor: row-resize; }
+
+/* PANEL DRAG GRIP */
+.panel-grip {
+  background: none; border: 1px solid transparent; color: var(--fg-dim);
+  padding: 2px 3px; cursor: grab; display: inline-flex; align-items: center; flex-shrink: 0;
+  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+.panel-grip:hover { color: var(--fg); border-color: var(--border-active); }
+.panel-grip:active { cursor: grabbing; }
+.panel-grip .icon { width: 10px; height: 12px; }
+/* Drag feedback — the source dims, the drop target is outlined. */
+.panel.is-dragging, .stat-block.is-dragging { opacity: 0.4; }
+.panel.is-drop-target { outline: 2px solid var(--red); outline-offset: -2px; }
+.stat-block.is-drop-target { box-shadow: inset 3px 0 0 var(--red); }
+.stat-block { cursor: grab; }
+.stat-block:active { cursor: grabbing; }
+.stat-block[hidden] { display: none; }
 
 /* PANELS */
-.panel { background: var(--bg-panel); display: flex; flex-direction: column; min-height: 0; }
+.panel { background: var(--bg-panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .panel-header { display: flex; align-items: center; gap: 10px; padding: 6px 10px;
   background: var(--bg-elevated); border-bottom: 1px solid var(--border);
-  font-size: 10px; letter-spacing: 0.06em; flex-shrink: 0; }
-.panel-title { color: var(--red-bright); font-weight: 700; font-family: var(--font-display); letter-spacing: 0.1em; }
-.panel-subtitle { color: var(--fg-dim); margin-right: auto; }
-.panel-actions { display: flex; gap: 4px; }
-.panel-body { flex: 1; overflow-y: auto; padding: 8px 10px; font-size: 10px; min-height: 0; }
+  font-size: var(--fs-md); letter-spacing: 0.06em; flex-shrink: 0;
+  min-width: 0; flex-wrap: wrap; row-gap: 4px; }
+.panel-title { color: var(--red-bright); font-weight: 700; font-family: var(--font-display); letter-spacing: 0.1em;
+  white-space: nowrap; }
+.panel-subtitle { color: var(--fg-dim); margin-right: auto;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.panel-body { flex: 1; overflow-y: auto; padding: 8px 10px; font-size: var(--fs-md); min-height: 0; min-width: 0; }
 .empty-state { color: var(--fg-dim); padding: 16px; text-align: center; }
 
 /* TERMINAL */
@@ -267,18 +351,19 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .terminal-container .xterm { height: 100%; padding: 4px 6px; }
 
 /* SERVICES */
-.service-item { display: grid; grid-template-columns: 1fr auto auto; align-items: center;
-  gap: 8px; padding: 5px 6px; border-bottom: 1px solid var(--border); font-size: 9px; letter-spacing: 0.04em; }
+.service-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
+  gap: 8px; padding: 5px 6px; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); letter-spacing: 0.04em; }
 .service-item:hover { background: var(--bg-elevated); }
-.service-name { color: var(--fg); font-weight: 500; }
-.service-state { font-weight: 700; font-size: 9px; letter-spacing: 0.08em; }
+.service-name { color: var(--fg); font-weight: 500;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.service-state { font-weight: 700; font-size: var(--fs-sm); letter-spacing: 0.08em; }
 .service-state.active { color: var(--green); }
 .service-state.inactive { color: var(--fg-dim); }
 .service-state.failed { color: var(--red-text); }
 .service-actions { display: flex; gap: 2px; }
 .svc-btn {
   background: none; border: 1px solid var(--border); color: var(--fg-dim);
-  font-family: var(--font-mono); font-size: 8px; padding: 1px 5px; cursor: pointer; letter-spacing: 0.04em;
+  font-family: var(--font-mono); font-size: var(--fs-xs); padding: 1px 5px; cursor: pointer; letter-spacing: 0.04em;
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out);
 }
 .svc-btn:hover { color: var(--fg); border-color: var(--red); }
@@ -286,22 +371,29 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 
 /* LOGS */
 .log-select { background: var(--bg); border: 1px solid var(--border); color: var(--fg-mid);
-  font-family: var(--font-mono); font-size: 9px; padding: 3px 6px; outline: none; }
+  font-family: var(--font-mono); font-size: var(--fs-sm); padding: 3px 6px; outline: none; }
 .log-select:focus { border-color: var(--red); }
-.log-container { flex: 1; overflow-y: auto; padding: 6px 8px; font-size: 9px; line-height: 1.5;
+.log-container { flex: 1; overflow-y: auto; padding: 6px 8px; font-size: var(--fs-sm); line-height: 1.5;
   letter-spacing: 0.03em; background: #000; color: var(--fg-dim); min-height: 0; white-space: pre-wrap; word-break: break-all; }
 
 /* BOTTOM ROW */
-.bottom-row { display: grid; grid-template-columns: 1fr 280px; gap: var(--gap); background: var(--border); height: 200px; min-height: 120px; }
-.sysinfo-row { display: grid; grid-template-columns: 90px 1fr; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 9px; letter-spacing: 0.05em; }
+.bottom-row { display: grid; grid-template-columns: minmax(0, 1fr) 9px var(--sysinfo-w, 280px);
+  gap: var(--gap); background: var(--border);
+  flex: 0 0 var(--bottom-h, 200px); min-height: 120px; }
+.sysinfo-row { display: grid; grid-template-columns: 90px minmax(0, 1fr); padding: 4px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); letter-spacing: 0.05em; }
 .si-label { color: var(--fg-dim); }
-.si-value { color: var(--fg); font-weight: 500; }
+/* Values like `ens3:|66989468|1067740` have no break opportunity and would otherwise
+   set the column's min-content floor, widening the whole panel. */
+.si-value { color: var(--fg); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 
 /* PANEL TABS */
-.panel-tabs { display: flex; gap: 4px; align-items: center; }
+/* Wrap rather than scroll: these tabs are the only route to Services/Processes/UFW/
+   Docker, and a horizontally scrolled strip hides them with no visible affordance.
+   At the 900px minimum window they take a second row instead of being clipped. */
+.panel-tabs { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .panel-tab {
   background: none; border: 1px solid transparent; font-family: inherit;
-  color: var(--fg-dim); font-size: 10px; line-height: inherit; padding: 3px 10px; cursor: pointer;
+  color: var(--fg-dim); font-size: var(--fs-md); line-height: inherit; padding: 3px 10px; cursor: pointer;
   letter-spacing: 0.06em; white-space: nowrap;
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease,
               transform var(--dur-fast) var(--ease-out);
@@ -311,7 +403,7 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .panel-tab.tab-active { color: var(--fg); border-color: var(--red); font-weight: 700; }
 
 /* AUDIT LOG */
-.audit-container { flex: 1; overflow-y: auto; padding: 4px 6px; font-size: 9px; line-height: 1.6;
+.audit-container { flex: 1; overflow-y: auto; padding: 4px 6px; font-size: var(--fs-sm); line-height: 1.6;
   letter-spacing: 0.03em; color: var(--fg-dim); min-height: 0; white-space: pre-wrap; word-break: break-all; }
 .audit-entry { padding: 2px 0; border-bottom: 1px solid var(--border); }
 .audit-entry .ae-time { color: var(--fg-dim); }
@@ -321,11 +413,11 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .audit-entry .ae-type.ae-fail { color: var(--red-text); }
 .audit-entry .ae-type.ae-config { color: var(--fg-mid); }
 .audit-entry .ae-msg { color: var(--fg); }
-.applog-stack { font-size: 8px; color: var(--fg-dim); padding: 1px 0; border-bottom: 1px solid var(--border); opacity: 0.7; white-space: pre-wrap; word-break: break-all; }
+.applog-stack { font-size: var(--fs-xs); color: var(--fg-dim); padding: 1px 0; border-bottom: 1px solid var(--border); opacity: 0.7; white-space: pre-wrap; word-break: break-all; }
 
 /* STATUS BAR */
 .status-bar { display: flex; align-items: center; gap: 12px; height: 20px; padding: 0 12px;
-  background: var(--bg-elevated); border-top: 1px solid var(--border-active); font-size: 9px; letter-spacing: 0.06em; color: var(--fg-dim); }
+  background: var(--bg-elevated); border-top: 1px solid var(--border-active); font-size: var(--fs-sm); letter-spacing: 0.06em; color: var(--fg-dim); }
 .status-sep { color: var(--border-active); }
 .status-disconnect { color: var(--red-text); font-weight: 700;
   transition: color var(--dur-fast) ease; }
@@ -357,8 +449,8 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
   outline-offset: 1px;
 }
 .modal-title { font-family: var(--font-display); font-weight: 700; color: var(--red-text);
-  font-size: 15px; letter-spacing: 0.12em; text-transform: uppercase; }
-.modal-subtitle { color: var(--fg-dim); font-size: 10px; letter-spacing: 0.06em; margin-right: auto; }
+  font-size: var(--fs-2xl); letter-spacing: 0.12em; text-transform: uppercase; }
+.modal-subtitle { color: var(--fg-dim); font-size: var(--fs-md); letter-spacing: 0.06em; margin-right: auto; }
 .modal-body { flex: 1; overflow-y: auto; padding: 16px; }
 .modal-footer { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
 
@@ -368,20 +460,22 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .bulk-command-row .connect-input { flex: 1; }
 
 .settings-section { margin-bottom: 20px; }
-.settings-heading { font-size: 10px; color: var(--red-text); letter-spacing: 0.1em; margin-bottom: 10px;
+.settings-heading { font-size: var(--fs-md); color: var(--red-text); letter-spacing: 0.1em; margin-bottom: 10px;
   padding-bottom: 4px; border-bottom: 1px solid var(--border); }
 .settings-row { display: grid; grid-template-columns: 160px 1fr; align-items: center;
-  padding: 6px 0; gap: 12px; font-size: 10px; letter-spacing: 0.04em; }
+  padding: 6px 0; gap: 12px; font-size: var(--fs-md); letter-spacing: 0.04em; }
 .settings-label { color: var(--fg-mid); }
-.settings-value { color: var(--fg); font-size: 9px; word-break: break-all; }
+.settings-value { color: var(--fg); font-size: var(--fs-sm); word-break: break-all; }
 .settings-input { background: var(--bg); border: 1px solid var(--border); color: var(--fg);
-  font-family: var(--font-mono); font-size: 11px; padding: 5px 8px; outline: none; width: 120px; }
+  font-family: var(--font-mono); font-size: var(--fs-base); padding: 5px 8px; outline: none; width: 120px; }
 .settings-input:focus { border-color: var(--red); }
+.settings-textarea { width: 100%; resize: vertical; line-height: 1.5; }
+.settings-hint { color: var(--fg-mid); font-size: var(--fs-sm); line-height: 1.5; }
 #master-password-group { margin-top: 8px; }
 #setting-master-pw, #setting-master-pw2 { width: 180px; }
 #setting-alert-cpu, #setting-alert-mem, #setting-alert-disk, #setting-alert-net { width: 70px; }
 .settings-select { background: var(--bg); border: 1px solid var(--border); color: var(--fg-mid);
-  font-family: var(--font-mono); font-size: 10px; padding: 5px 8px; outline: none; }
+  font-family: var(--font-mono); font-size: var(--fs-md); padding: 5px 8px; outline: none; }
 .settings-select:focus { border-color: var(--red); }
 
 /* FILE EDITOR */
@@ -389,18 +483,18 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .editor-body { padding: 0; overflow: hidden; display: flex; }
 .editor-textarea {
   flex: 1; background: #000; color: var(--fg); border: none; outline: none; resize: none;
-  font-family: var(--font-mono); font-size: 13px; line-height: 1.55; padding: 12px 16px;
+  font-family: var(--font-mono); font-size: var(--fs-xl); line-height: 1.55; padding: 12px 16px;
   tab-size: 2; white-space: pre; overflow-wrap: normal; overflow: auto;
   user-select: text; -webkit-user-select: text;
 }
-.editor-info { font-size: 9px; color: var(--fg-dim); letter-spacing: 0.04em; margin-right: 8px; }
+.editor-info { font-size: var(--fs-sm); color: var(--fg-dim); letter-spacing: 0.04em; margin-right: 8px; }
 .editor-footer { justify-content: space-between; }
-.editor-status { font-size: 9px; color: var(--fg-dim); letter-spacing: 0.06em; }
-.editor-shortcuts { font-size: 9px; color: var(--fg-dim); letter-spacing: 0.04em; }
+.editor-status { font-size: var(--fs-sm); color: var(--fg-dim); letter-spacing: 0.06em; }
+.editor-shortcuts { font-size: var(--fs-sm); color: var(--fg-dim); letter-spacing: 0.04em; }
 
 /* NETWORK STAT */
-.stat-value.net-value { font-size: clamp(1rem, 2vw, 1.4rem); line-height: 1.2; }
-.net-legend { display: flex; gap: 10px; font-size: 8px; letter-spacing: 0.06em; align-items: center; margin-top: 2px; }
+.stat-value.net-value { font-size: calc(clamp(1.05rem, 2vw, 1.4rem) * var(--ui-scale)); line-height: 1.2; }
+.net-legend { display: flex; gap: 10px; font-size: var(--fs-xs); letter-spacing: 0.06em; align-items: center; margin-top: 2px; }
 .net-tx, .net-rx { display: flex; align-items: center; gap: 3px; }
 .net-tx { color: var(--fg-dim); }
 .net-rx { color: var(--fg-dim); }
@@ -437,12 +531,22 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .toggle-switch input:checked + .toggle-slider::before { background: var(--red); transform: translateX(18px); }
 .toggle-switch input:focus-visible + .toggle-slider { outline: 1px solid var(--green); outline-offset: 1px; }
 
+/* LAYOUT SETTINGS */
+.settings-hint { font-size: var(--fs-sm); color: var(--fg-dim); letter-spacing: 0.04em;
+  line-height: 1.6; margin-bottom: 10px; }
+.settings-fieldset { border: none; margin-bottom: 6px; }
+.stat-vis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 4px 12px; }
+.stat-vis { display: flex; align-items: center; gap: 6px; font-size: var(--fs-md);
+  color: var(--fg-mid); letter-spacing: 0.06em; cursor: pointer; }
+.stat-vis:hover { color: var(--fg); }
+.stat-vis input { accent-color: var(--red); cursor: pointer; }
+
 /* SOUND SETTINGS */
-.settings-subheading { font-size: 9px; color: var(--fg-mid); letter-spacing: 0.08em; padding: 8px 0 4px; border-top: 1px solid var(--border); margin-top: 4px; }
+.settings-subheading { font-size: var(--fs-sm); color: var(--fg-mid); letter-spacing: 0.08em; padding: 8px 0 4px; border-top: 1px solid var(--border); margin-top: 4px; }
 .sound-row { grid-template-columns: 130px 1fr; }
 .sound-picker { display: flex; align-items: center; gap: 4px; }
-.sound-path { flex: 1; font-size: 9px !important; cursor: default; }
-.sound-load, .sound-clear, .sound-test { font-size: 9px; padding: 2px 6px; cursor: pointer; }
+.sound-preset { flex: 1; min-width: 0; font-size: var(--fs-sm) !important; }
+.sound-load, .sound-clear, .sound-test { font-size: var(--fs-sm); padding: 2px 6px; cursor: pointer; }
 .sound-load:hover { color: var(--green); border-color: var(--green); }
 .sound-clear:hover { color: var(--red); border-color: var(--red); }
 .sound-test:hover { color: #4169E1; border-color: #4169E1; }
@@ -450,15 +554,15 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 /* UNLOCK MODAL */
 .modal-sm { width: 420px; }
 .unlock-field { margin-top: 12px; }
-.unlock-desc { font-size: 10px; color: var(--fg-dim); letter-spacing: 0.04em; margin-bottom: 8px; }
-.unlock-error { font-size: 9px; color: var(--red-text); letter-spacing: 0.06em; margin-top: 4px; display: block; }
+.unlock-desc { font-size: var(--fs-md); color: var(--fg-dim); letter-spacing: 0.04em; margin-bottom: 8px; }
+.unlock-error { font-size: var(--fs-sm); color: var(--red-text); letter-spacing: 0.06em; margin-top: 4px; display: block; }
 
 /* UFW FIREWALL */
 .ufw-controls { display: flex; align-items: center; gap: 8px; padding: 4px 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
-.status-pill, .ufw-status { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; padding: 2px 8px; border: 1px solid var(--border); }
+.status-pill, .ufw-status { font-size: var(--fs-md); font-weight: 700; letter-spacing: 0.08em; padding: 2px 8px; border: 1px solid var(--border); }
 .ufw-status.active { color: var(--green); border-color: var(--green); }
 .ufw-status.inactive { color: var(--red-text); border-color: var(--red); }
-.ufw-policy { font-size: 9px; color: var(--fg-dim); letter-spacing: 0.04em; flex: 1; }
+.ufw-policy { font-size: var(--fs-sm); color: var(--fg-dim); letter-spacing: 0.04em; flex: 1; }
 .ufw-add-form { display: flex; align-items: center; gap: 6px; padding: 4px 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .ufw-add-form select { width: 70px; }
 .ufw-rule-row.allow .ufw-action { color: var(--green); }
@@ -467,20 +571,20 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 
 /* BULK EXEC */
 .bulk-output { flex: 1; overflow-y: auto; background: #000; font-family: var(--font-mono);
-  font-size: 9px; padding: 8px 10px; min-height: 200px; line-height: 1.5; letter-spacing: 0.02em; }
+  font-size: var(--fs-sm); padding: 8px 10px; min-height: 200px; line-height: 1.5; letter-spacing: 0.02em; }
 .bulk-server-result { margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .bulk-server-result:last-child { border-bottom: none; }
-.bulk-server-label { color: var(--red-text); font-weight: 700; font-size: 10px; margin-bottom: 4px; }
+.bulk-server-label { color: var(--red-text); font-weight: 700; font-size: var(--fs-md); margin-bottom: 4px; }
 .bulk-server-label.success { color: var(--green); }
 .bulk-server-output { color: var(--fg-dim); white-space: pre-wrap; word-break: break-all; }
 
 /* DOCKER */
-.docker-status { font-weight: 700; font-size: 9px; letter-spacing: 0.04em; }
+.docker-status { font-weight: 700; font-size: var(--fs-sm); letter-spacing: 0.04em; }
 .docker-status.running { color: var(--green); }
 .docker-status.exited { color: var(--red-text); }
 .docker-status.paused { color: var(--amber); }
 .docker-log-viewer {
-  background: #000; font-family: var(--font-mono); font-size: 9px; line-height: 1.5;
+  background: #000; font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.5;
   color: var(--fg-dim); padding: 6px 8px; max-height: 150px; overflow-y: auto;
   white-space: pre-wrap; word-break: break-all; margin-top: 4px;
   border: 1px solid var(--border);
@@ -489,26 +593,29 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 /* PROCESS MANAGER */
 .proc-controls { display: flex; align-items: center; gap: 8px; padding: 4px 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .proc-search { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--fg);
-  font-family: var(--font-mono); font-size: 10px; padding: 4px 8px; outline: none; letter-spacing: 0.03em; }
+  font-family: var(--font-mono); font-size: var(--fs-md); padding: 4px 8px; outline: none; letter-spacing: 0.03em; }
 .proc-search:focus { border-color: var(--red); }
 .proc-legend { display: flex; gap: 6px; }
-.proc-legend-item { font-size: 8px; color: var(--fg-dim); letter-spacing: 0.06em; padding: 2px 5px;
+.proc-legend-item { font-size: var(--fs-xs); color: var(--fg-dim); letter-spacing: 0.06em; padding: 2px 5px;
   border: 1px solid var(--border); background: var(--bg); cursor: default; white-space: nowrap; }
 
-.proc-table-wrap { overflow-y: auto; max-height: calc(100% - 36px); }
-.proc-table, .file-table { width: 100%; border-collapse: collapse; font-size: 10px; letter-spacing: 0.02em; }
+/* overflow-x too: `width:100%` is a floor, not a cap. A process table with many
+   nowrap columns has a min-content width larger than the panel, and without this it
+   widened the panel instead of scrolling inside it. */
+.proc-table-wrap { overflow-y: auto; overflow-x: auto; max-height: calc(100% - 36px); }
+.proc-table, .file-table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); letter-spacing: 0.02em; }
 .proc-table thead, .file-table thead { position: sticky; top: 0; z-index: 1; }
 .proc-table th, .file-table th {
   background: var(--bg-elevated); color: var(--fg-dim); padding: 4px 6px;
   border-bottom: 2px solid var(--red); text-align: left; font-weight: 500;
-  letter-spacing: 0.06em; font-size: 9px; white-space: nowrap;
+  letter-spacing: 0.06em; font-size: var(--fs-sm); white-space: nowrap;
 }
 .proc-table th.sortable {
   cursor: pointer; user-select: none; transition: color var(--dur-fast) ease;
 }
 .proc-table th.sortable:hover { color: var(--fg); }
 .proc-table th.sortable.active { color: var(--green); }
-.proc-table th.sortable::after { content: ''; margin-left: 2px; font-size: 8px; }
+.proc-table th.sortable::after { content: ''; margin-left: 2px; font-size: var(--fs-xs); }
 .proc-table th.sortable.asc::after { content: ' \2191'; }
 .proc-table th.sortable.desc::after { content: ' \2193'; }
 .proc-table td, .file-table td {
@@ -520,7 +627,7 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .proc-table td.proc-cpu.high { color: var(--red-text); font-weight: 700; }
 .proc-table td.proc-mem { color: var(--fg-mid); }
 .proc-table td.proc-mem.high { color: var(--red-text); font-weight: 700; }
-.proc-table td.proc-command { max-width: 180px; color: var(--fg); font-size: 9px; }
+.proc-table td.proc-command { max-width: 180px; color: var(--fg); font-size: var(--fs-sm); }
 .proc-table tr:hover, .file-table tr:hover { background: var(--bg-elevated); }
 .proc-table tr.proc-highlight { background: rgba(230,25,25,0.08); }
 .proc-table th.th-actions { width: 120px; text-align: center; }
@@ -532,7 +639,7 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 
 .proc-btn {
   background: var(--bg); border: 1px solid var(--border); color: var(--fg-dim);
-  font-family: var(--font-mono); font-size: 8px; padding: 1px 4px; cursor: pointer;
+  font-family: var(--font-mono); font-size: var(--fs-xs); padding: 1px 4px; cursor: pointer;
   letter-spacing: 0.04em; white-space: nowrap;
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out);
 }
@@ -548,7 +655,7 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 .file-path-bar { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px 0 6px;
   border-bottom: 1px solid var(--border); margin-bottom: 4px; align-items: center; }
 .file-path-seg {
-  font-size: 9px; color: var(--fg-mid); letter-spacing: 0.04em; padding: 2px 4px;
+  font-size: var(--fs-sm); color: var(--fg-mid); letter-spacing: 0.04em; padding: 2px 4px;
   cursor: pointer; border: 1px solid transparent; white-space: nowrap;
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
@@ -562,18 +669,18 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 }
 .file-table .file-name.dir { color: var(--amber); font-weight: 700; }
 .file-table .file-name.symlink { color: var(--fg-mid); }
-.file-table .file-icon { font-size: 10px; width: 12px; text-align: center; flex-shrink: 0; color: inherit; }
+.file-table .file-icon { font-size: var(--fs-md); width: 12px; text-align: center; flex-shrink: 0; color: inherit; }
 .file-table th.th-size { width: 70px; text-align: right; }
 .file-table th.th-perms { width: 110px; }
 .file-table th.th-date { width: 120px; }
 .file-table th.th-actions { width: 110px; text-align: center; }
-.file-table td.file-size { text-align: right; color: var(--fg-dim); font-size: 9px; }
-.file-table td.file-perms { color: var(--green); font-size: 9px; letter-spacing: 0.04em; }
-.file-table td.file-date { color: var(--fg-dim); font-size: 9px; }
+.file-table td.file-size { text-align: right; color: var(--fg-dim); font-size: var(--fs-sm); }
+.file-table td.file-perms { color: var(--green); font-size: var(--fs-sm); letter-spacing: 0.04em; }
+.file-table td.file-date { color: var(--fg-dim); font-size: var(--fs-sm); }
 
 .file-btn {
   background: var(--bg); border: 1px solid var(--border); color: var(--fg-dim);
-  font-family: var(--font-mono); font-size: 8px; padding: 1px 4px; cursor: pointer;
+  font-family: var(--font-mono); font-size: var(--fs-xs); padding: 1px 4px; cursor: pointer;
   letter-spacing: 0.04em; white-space: nowrap;
   transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out);
 }
@@ -650,6 +757,23 @@ input, textarea, select, .connect-input, .proc-search, .settings-input, .setting
 }
 
 /* RESPONSIVE */
-@media (max-width: 1100px) { .main-row { grid-template-columns: 1fr; } }
-@media (max-width: 900px) { .stats-row { grid-template-columns: repeat(3, 1fr); } .bottom-row { grid-template-columns: 1fr; height: auto; } }
-@media (max-width: 500px) { .stats-row { grid-template-columns: repeat(2, 1fr); } .connect-grid { grid-template-columns: 1fr; } }
+/* Every track is minmax(0, ...) for the same reason as the base rules: a bare `1fr`
+   is minmax(auto, 1fr) and cannot shrink past its content, which is what let the
+   panels overflow the window at narrow widths in the first place. */
+/* .stats-row needs no breakpoints — flex-wrap reflows it at every width. */
+/* Stacked, the terminal and the side panel are not equal partners — an even 1fr/1fr
+   split left the terminal ~50px (three lines) at the 900x600 minimum window. Weight
+   it, and floor both so they scroll the dashboard rather than collapse. */
+@media (max-width: 1100px) {
+  .main-row { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(210px, 1.6fr) minmax(160px, 1fr); }
+  /* Stacked, a vertical splitter has nothing to split. Hiding it also drops it
+     out of the grid's item count, so the two panels land on the two rows above. */
+  .main-row > .splitter-col { display: none; }
+}
+@media (max-width: 900px) {
+  .bottom-row { grid-template-columns: minmax(0, 1fr); flex-basis: auto; }
+  .bottom-row > .splitter-col { display: none; }
+}
+@media (max-width: 500px) {
+  .connect-grid { grid-template-columns: minmax(0, 1fr); }
+}

@@ -44,7 +44,7 @@ has already registered that account as a contributor on GitHub.
 ```bash
 npm start          # Electron app — forks the server on port 3141
 npm run server     # Server only (browser mode) → http://localhost:3141
-npm run icon       # Regenerate app icons (public/icon.png, icon.ico) — run after touching scripts/generate-icon.js
+npm run icon       # Rebuild app icons from assets/icon-source.png → public/icon.png, icon.ico, favicons
 ```
 
 `npm run server` is the fastest dev loop for frontend changes — open the dashboard in a regular browser and hit refresh.
@@ -57,7 +57,7 @@ npm run build:mac    # macOS (.dmg + .zip)
 npm run build:linux  # Linux (.AppImage, .deb)
 ```
 
-The `prebuild` hook regenerates app icons automatically (output in `dist/`). Note: macOS icon generation requires the icon to be **at least 512×512** — `scripts/generate-icon.js` produces 512 and 1024 versions.
+The `prebuild` hook rebuilds app icons automatically (output in `dist/`). Source artwork lives at `assets/icon-source.png` (1024×1024) — replace that file and run `npm run icon` to change the app icon. Note: macOS requires the icon to be **at least 512×512**, so the source must stay 1024×1024 and square.
 
 ---
 
@@ -76,7 +76,7 @@ public/
   js/app.js        # All frontend logic: state, DOM, polling, charts, panels
   css/styles.css   # Brutalist design system (design tokens in :root)
 scripts/
-  generate-icon.js # Icon generator (PNG/ICO)
+  generate-icon.js # Icon builder: assets/icon-source.png → PNG/ICO/favicons
   smoke-test.js    # CI server boot test
 .github/workflows/ # CI + release pipelines
 ```

@@ -38,7 +38,16 @@ A cross-platform Electron desktop application for monitoring and controlling clo
 - **Stat blocks**: CPU load, memory, disk, uptime, load average, process count, network throughput — all live
 - **Resource history**: Sparkline charts for CPU, memory, disk, and network TX/RX (dual-line)
 - **Alert thresholds**: User-configurable CPU/memory/disk limits with red pulsing flash + audit logging
+- **Log watch**: Keyword scan of the polled log tail — sound, audit entry, and desktop notification on a match
 - **Network throughput**: Dual-line TX/RX sparkline with bytes/sec delta computed from `/proc/net/dev`
+
+### Layout & Legibility
+- **Rearrangeable panels**: Drag any panel by the grip in its header and drop it on another to swap the two
+- **Resizable sections**: Drag the dividers between panels to resize the side panel, the system-info panel, and the bottom row
+- **Reorderable stats**: Drag a stat block to move it; hide the metrics you do not watch from Settings > Layout
+- **UI scale**: 100-175% type scaling for comfortable reading at a normal desk distance (Settings > Display)
+- **Persistent**: Panel order, stat order, hidden stats, divider positions, and UI scale are saved to `settings.json` and restored on launch
+- **Keyboard-operable**: Arrow keys on a focused grip or divider, `Alt` + arrows on a focused stat block — the drag interactions are not mouse-only
 
 ### Services Panel (4 tabs)
 - **SERVICES**: systemd unit list with start/stop/restart actions
@@ -142,7 +151,7 @@ A cross-platform Electron desktop application for monitoring and controlling clo
 
 - **Runtime**: Windows, macOS, or Linux desktop
 - **Target VPS**: Linux with SSH access (systemd for service management)
-- **Build host**: Node.js 20+, npm 9+
+- **Build host**: Node.js 20+ (CI runs Node 24), npm 9+
 
 ### Download Pre-built Binary
 
@@ -217,6 +226,10 @@ Useful for development and for testing the frontend in a regular browser.
 | `Ctrl+-` / `Cmd+-` | Zoom out |
 | `Ctrl+0` / `Cmd+0` | Reset zoom |
 | `Ctrl+S` | Save file in the built-in text editor |
+| `←` `→` `↑` `↓` | Move the focused panel (on a panel grip), or resize (on a divider) |
+| `Shift` + arrows | Resize a focused divider in larger steps |
+| `Home` / `End` | Snap a focused divider to its minimum or maximum |
+| `Alt` + arrows | Reorder the focused stat block |
 
 ---
 
@@ -227,6 +240,10 @@ Useful for development and for testing the frontend in a regular browser.
 The top row of stat blocks shows CPU load, memory, disk, uptime, load average, process count, and network throughput. Each metric refreshes on the configured polling interval, and sparkline charts track history for CPU, memory, disk, and network TX/RX.
 
 **Alert thresholds** (default 90% for CPU/memory/disk) trigger a red pulsing flash on the affected stat block and write an entry to the audit log. Configure thresholds in Settings.
+
+**Alert sounds** are per-type — CPU, memory, disk, network, log watch, connect OK, and connect fail each get their own synthesized tone by default. Each row in Settings → Custom Sounds has a dropdown listing `DEFAULT BEEP` plus every audio file bundled in `public/sounds/`, so the shipped alarms are one pick away. 📁 loads your own `.wav` / `.mp3` / `.ogg` / `.m4a` / `.aac` file instead, ▶ previews the current selection, and ✕ reverts to the default tone. Files you load are copied into `~/.vps-commander/sounds/` so they survive restarts even if you later move or delete the original — one file per alert type, replaced on each new pick. Drop more files into `public/sounds/` to extend the dropdown; no code change needed.
+
+**Log watch** scans the log tail each poll (default every 30s) for the comma-separated terms in Settings → Log Watch Terms (default `error, fail, denied, panic, segfault, refused`). A match plays the Log Watch alert sound, writes an `ALERT` audit entry, and raises a desktop notification when the window is not focused. Only lines that are new since the previous poll are scanned, and the first poll after opening a file or switching servers only establishes the position — it never alerts on the existing backlog. Clearing the field disables log alerts. Scanning follows the file selected in the Logs panel, so alerts only cover the active server and the selected log.
 
 ### Services, Processes, Firewall & Docker
 
@@ -278,18 +295,22 @@ Settings are stored in `~/.vps-commander/settings.json`. All values are configur
 | `auditLog` | `true` | Enable audit logging |
 | `alertEnabled` | `true` | Enable alert thresholds |
 | `alertSound` | `true` | Play alert sound |
-| `alertSounds` | `{...}` | Per-alert-type toggles + optional custom audio files (cpu, memory, disk, network, connectOk, connectFail) |
+| `alertSounds` | `{...}` | Per-alert-type toggles + sound selection for cpu, memory, disk, network, connectOk, connectFail, logWatch. `file` is `""` (default beep), a bundled preset (`/sounds/name.wav`), or an absolute path under `~/.vps-commander/sounds/` |
 | `alertCpu` | `90` | CPU alert threshold (%) |
 | `alertMem` | `90` | Memory alert threshold (%) |
 | `alertDisk` | `90` | Disk alert threshold (%) |
 | `alertNetMbps` | `800` | Network throughput alert threshold (Mbps) |
+| `logWatch` | `["error","fail","denied","panic","segfault","refused"]` | Substrings that raise a log alert, matched case-insensitively against new log lines. Empty disables log alerts |
 | `logPresets` | `[...]` | Default log files to tail |
+| `layout` | `{...}` | Panel order, stat order, hidden stats, divider sizes, and UI scale — written automatically as you rearrange, and by Settings > Layout > Restore Defaults |
 
 ---
 
 ## Profiles & Vault Security
 
 Profiles are stored in `~/.vps-commander/profiles.json`. Passwords and SSH keys are **never stored in plaintext** — they're encrypted with AES-256-GCM before touching disk.
+
+Save a profile once with **SAVE PROFILE** and the credential comes back with it — pick the profile and the password or SSH key is refilled automatically, no re-selecting a key file. The last profile you connected with is re-selected on launch (remembered per machine in `localStorage`, id only — no credential).
 
 ### Encryption Pipeline
 
@@ -402,6 +423,9 @@ The Express server exposes a JSON REST API. Unless noted, routes require a `sess
 | POST | `/api/audit-log` | Write client-side audit entry (alerts) |
 | GET | `/api/error-log` | Read app error log |
 | POST | `/api/error-log` | Write client-side error entry |
+| GET | `/api/sounds` | List bundled alert sound presets in `public/sounds/` |
+| GET | `/api/sound` | Stream a custom alert sound by path |
+| POST | `/api/sound/:type` | Upload a custom alert sound → `~/.vps-commander/sounds/` |
 
 ---
 
@@ -455,7 +479,7 @@ GitHub Actions workflows are included:
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| `ci.yml` | Push to `main`, pull requests | Rejects commit messages with AI attribution footers, syntax-checks all source files, runs the server smoke test, verifies the app packages on Windows, macOS, and Linux, and checks docs TOC anchors + relative links |
+| `ci.yml` | Push to `main`, pull requests | Rejects commit messages with AI attribution footers, syntax-checks all source files, runs the server smoke test and the terminal transport check, asserts the layout invariants at every supported window size, verifies the app packages on Windows, macOS, and Linux, and checks docs TOC anchors + relative links |
 | `links.yml` | Weekly schedule (Mon 06:00 UTC), manual dispatch | Probes every http/https link in the docs with a live HEAD request (GET fallback) so dead external URLs fail CI |
 | `release.yml` | Push tag `v*` | Gates on docs freshness, builds all platform installers, verifies signatures (when signing secrets are configured), and publishes a GitHub Release with release notes + auto-update feeds |
 
@@ -492,12 +516,22 @@ The release workflow builds `.exe` (Windows), `.dmg` + `.zip` (macOS), and `.App
 │   ├── index.html          # Dashboard layout, modals, forms
 │   ├── splash.html         # Startup splash screen
 │   ├── js/app.js           # All frontend logic: state, DOM, polling, charts, panels
+│   ├── js/layout.js        # Panel swapping, stat reordering, splitter resize, persistence
 │   ├── css/styles.css      # Brutalist dark design system
 │   ├── vendor/             # Vendored xterm.js + fonts (no CDN)
-│   └── icon.png/ico        # Generated app icons
+│   ├── sounds/             # Bundled alert sounds — every file here becomes a preset
+│   └── icon.png/ico        # Built app icons + favicons
+├── assets/
+│   └── icon-source.png     # App icon artwork (1024×1024) — source for npm run icon
 ├── scripts/
-│   ├── generate-icon.js    # Icon generator (PNG/ICO)
+│   ├── generate-icon.js    # Icon builder: assets/icon-source.png → PNG/ICO/favicons
 │   ├── a11y-audit.js       # Accessibility audit (npm run a11y)
+│   ├── layout-check.js     # Layout regression probe (npm run layout)
+│   ├── terminal-check.js   # Terminal transport check (npm run terminal-check)
+│   ├── terminal-focus-check.js # Terminal click-to-focus check (npm run terminal-focus)
+│   ├── profile-key-check.js # Saved-key round trip check (npm run profile-key)
+│   ├── log-watch-check.js  # Log-watch scan check (npm run log-watch)
+│   ├── sound-check.js      # Custom alert sound round trip (npm run sound-check)
 │   └── smoke-test.js       # CI server boot test
 ├── docs/
 │   └── SIGNING.md          # Code-signing & notarization guide
@@ -518,6 +552,29 @@ npm start          # Electron app (forks server on port 3141)
 # or
 npm run server     # Server only → http://localhost:3141
 ```
+
+### Checks
+
+```bash
+npm run a11y            # axe-core WCAG 2.1 AA audit across 9 views
+npm run layout          # layout invariants at every supported window size
+npm run terminal-check  # keystrokes reach the SSH shell stream (SSH stubbed)
+npm run terminal-focus  # clicking the terminal focuses it and typing lands
+npm run profile-key     # saved SSH key survives encrypt → disk → decrypt (sandboxed HOME)
+npm run log-watch       # log-watch scan only alerts on lines new since the last poll
+npm run sound-check     # bundled presets are served; a picked file survives upload → disk → replay
+node scripts/smoke-test.js   # server boots, REST endpoints answer
+```
+
+The two terminal checks cover opposite halves of the same path and neither
+substitutes for the other: `terminal-check` proves a keystroke that reaches the
+WebSocket reaches the shell, `terminal-focus` proves a click on the terminal
+actually gives it the keyboard. A terminal that never takes focus types nothing
+and reports nothing while the transport check stays green.
+
+`npm run a11y`, `npm run layout`, and `npm run terminal-focus` drive a headless
+system Chrome (Edge as a fallback) — `playwright-core` does not download a
+browser. All five run in CI.
 
 ### Adding a New Feature (Pattern)
 
