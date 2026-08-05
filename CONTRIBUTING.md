@@ -44,6 +44,14 @@ The same `core.hooksPath` setting also enables the `pre-push` hook, which parses
 invalid workflow file with zero jobs and no error, so a broken release path
 would otherwise look like "nothing happened".
 
+Push-time validation runs in two passes: a YAML parse (uses the repo's own
+`node_modules/js-yaml`, works offline) and, if installed, `actionlint` for
+schema/expression checks -- it would have caught the `secrets`-in-`if:` and
+unquoted-colon bugs at the semantic level too. Install actionlint once per
+machine: `winget install rhysd.actionlint` (Windows), `brew install actionlint`
+(macOS), or `go install github.com/rhysd/actionlint/cmd/actionlint@latest`.
+Without it the semantic pass is skipped with a warning.
+
 ### Run the app
 
 ```bash

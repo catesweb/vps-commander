@@ -1,16 +1,24 @@
 #!/bin/sh
 # Pre-push: fail the push before it leaves the machine if any GitHub Actions
-# workflow YAML cannot be parsed. Workflows fail SILENTLY at parse time on GitHub:
-# an invalid file produces a run with ZERO jobs, so nothing inside CI can catch it
-# and a broken release path looks like "nothing happened". Bitten twice
-# (2026-08-01): a secrets-context-in-if: parse error that killed release.yml with
-# no jobs, and an unquoted colon in a step name that broke ci.yml.
+# workflow is invalid. Workflows fail SILENTLY on GitHub: an invalid file produces
+# a run with ZERO jobs, so nothing inside CI can catch it and a broken release
+# path looks like "nothing happened". Bitten twice (2026-08-01): a
+# secrets-context-in-if: parse error that killed release.yml with no jobs, and an
+# unquoted colon in a step name that broke ci.yml.
 #
-# Deliberately cheap: YAML validity only, no schema checks. Upgrade to actionlint
-# here if parse errors ever stop being the failure mode. Uses the repo's own
-# node_modules/js-yaml when present (fast, works offline); otherwise falls back to
-# `npx -y js-yaml` (downloads on first use). If no parser is available, warn and
-# continue rather than block every push on tooling.
+# Two passes:
+#   1. YAML parse (js-yaml) -- catches syntax errors. Uses the repo's own
+#      node_modules/js-yaml when present (fast, works offline); otherwise falls
+#      back to `npx -y js-yaml` (downloads on first use).
+#   2. Semantic (actionlint) -- validates the workflow schema and ${{ }} grammar,
+#      which would have caught both historical bugs at the semantic level too.
+#      Optional: if actionlint is not installed, warn and continue rather than
+#      block every push on tooling. Install once with:
+#        winget install rhysd.actionlint   (Windows)
+#        brew install actionlint           (macOS)
+#        go install github.com/rhysd/actionlint/cmd/actionlint@latest
+#
+# If neither parser is available for a pass, that pass is skipped with a warning.
 
 set -u
 
@@ -30,7 +38,7 @@ parse() { # $1 = workflow file
   elif command -v npx >/dev/null 2>&1; then
     npx -y js-yaml "$1" >/dev/null
   else
-    echo "pre-push: no js-yaml available (node/npx missing) -- skipping workflow YAML check" >&2
+    echo "pre-push: no js-yaml available (node/npx missing) -- skipping YAML parse pass" >&2
     exit 0
   fi
 }
@@ -41,10 +49,24 @@ for f in "$@"; do
   parse "$f" || { echo "pre-push: $f is not valid YAML" >&2; FAIL=1; }
 done
 
+if [ "$FAIL" -eq 0 ] && command -v actionlint >/dev/null 2>&1; then
+  # actionlint with no args lints .github/workflows/*.yml|*.yaml (and any
+  # .github/actions). It prints nothing when clean; any output is a finding.
+  AL_OUT=$(actionlint -no-color 2>&1)
+  if [ -n "$AL_OUT" ]; then
+    printf '%s\n' "$AL_OUT" >&2
+    echo "pre-push: actionlint found problems in the workflow file(s) above." >&2
+    FAIL=1
+  fi
+elif [ "$FAIL" -eq 0 ]; then
+  echo "pre-push: actionlint not installed -- semantic workflow check skipped" >&2
+  echo "  install once with:  winget install rhysd.actionlint  (or: brew install actionlint)" >&2
+fi
+
 if [ "$FAIL" -ne 0 ]; then
   echo "pre-push: refusing to push -- fix the workflow file(s) above." >&2
-  echo "  GitHub runs workflows with ZERO jobs on a parse error (silent failure);" >&2
-  echo "  validate locally with:  npx -y js-yaml <file>" >&2
+  echo "  GitHub runs workflows with ZERO jobs on an invalid file (silent failure);" >&2
+  echo "  validate locally with:  npx -y js-yaml <file>   and   actionlint" >&2
   exit 1
 fi
 
