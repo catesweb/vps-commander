@@ -39,7 +39,7 @@ parse() { # $1 = workflow file
     npx -y js-yaml "$1" >/dev/null
   else
     echo "pre-push: no js-yaml available (node/npx missing) -- skipping YAML parse pass" >&2
-    exit 0
+    return 0
   fi
 }
 

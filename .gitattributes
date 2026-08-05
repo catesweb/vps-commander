@@ -1,0 +1,2 @@
+# Hook scripts must stay LF: a CRLF shebang line breaks execution under sh.
+.githooks/* -text
