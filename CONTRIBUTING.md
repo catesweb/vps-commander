@@ -45,7 +45,10 @@ invalid workflow file with zero jobs and no error, so a broken release path
 would otherwise look like "nothing happened".
 
 Push-time validation runs in two passes: a YAML parse (uses the repo's own
-`node_modules/js-yaml`, works offline) and, if installed, `actionlint` for
+`node_modules/js-yaml`, works offline; a clone that skipped `npm install` falls
+back to `npx -y js-yaml`, which the hook probes on known-good YAML first so a
+failed download reads as a tooling failure and skips the pass rather than
+blocking the push) and, if installed, `actionlint` for
 schema/expression checks -- it would have caught the `secrets`-in-`if:` and
 unquoted-colon bugs at the semantic level too. Install actionlint once per
 machine: `winget install rhysd.actionlint` (Windows), `brew install actionlint`

@@ -9,7 +9,11 @@
 # Two passes:
 #   1. YAML parse (js-yaml) -- catches syntax errors. Uses the repo's own
 #      node_modules/js-yaml when present (fast, works offline); otherwise falls
-#      back to `npx -y js-yaml` (downloads on first use).
+#      back to `npx -y js-yaml` (downloads on first use, so it needs network the
+#      first time). The fallback is probed against known-good YAML before any
+#      workflow is read, so "npx could not fetch the package" is reported as a
+#      tooling failure and skips the pass, instead of being blamed on the first
+#      workflow file and blocking a perfectly valid push offline.
 #   2. Semantic (actionlint) -- validates the workflow schema and ${{ }} grammar,
 #      which would have caught both historical bugs at the semantic level too.
 #      Optional: if actionlint is not installed, warn and continue rather than
@@ -19,6 +23,7 @@
 #        go install github.com/rhysd/actionlint/cmd/actionlint@latest
 #
 # If neither parser is available for a pass, that pass is skipped with a warning.
+# Only a genuine parse/lint finding ever blocks a push.
 
 set -u
 
@@ -30,24 +35,48 @@ DIR=.github/workflows
 set -- "$DIR"/*.yml "$DIR"/*.yaml
 [ -e "$1" ] || exit 0
 
+# Pick the parser ONCE, before any workflow is read. `npx -y js-yaml` fails the
+# same way whether the YAML is broken or npm simply cannot reach the registry
+# (offline, cold cache), and the second must not read as the first. Probing on
+# YAML that is known good separates them: probe fails -> the tool is unusable,
+# skip the pass; probe passes -> the package is cached and every later failure
+# is a real parse error.
+PARSER=none
+if [ -f node_modules/js-yaml/package.json ]; then
+  PARSER=local
+elif ! command -v npx >/dev/null 2>&1; then
+  echo "pre-push: no js-yaml available (node/npx missing) -- skipping YAML parse pass" >&2
+else
+  PROBE="${TMPDIR:-/tmp}/pre-push-yaml-probe.$$.yml"
+  printf 'probe: ok\n' > "$PROBE" 2>/dev/null
+  if npx -y js-yaml "$PROBE" >/dev/null 2>&1; then
+    PARSER=npx
+  else
+    echo "pre-push: 'npx -y js-yaml' could not run -- skipping YAML parse pass" >&2
+    echo "  This is a TOOLING failure (offline with a cold npm cache?), not a workflow" >&2
+    echo "  error, so the push is not blocked for it. To validate offline, install the" >&2
+    echo "  parser once while online:  npm i -D js-yaml" >&2
+  fi
+  rm -f "$PROBE"
+fi
+
 parse() { # $1 = workflow file
-  if [ -f node_modules/js-yaml/package.json ]; then
+  if [ "$PARSER" = local ]; then
     node -e 'const y=require("./node_modules/js-yaml");const f=process.argv[1];
       try{y.load(require("fs").readFileSync(f,"utf8"));}
       catch(e){console.error("pre-push: YAML parse failed in "+f+": "+e.message);process.exit(1);}' "$1"
-  elif command -v npx >/dev/null 2>&1; then
-    npx -y js-yaml "$1" >/dev/null
   else
-    echo "pre-push: no js-yaml available (node/npx missing) -- skipping YAML parse pass" >&2
-    return 0
+    npx -y js-yaml "$1" >/dev/null
   fi
 }
 
 FAIL=0
-for f in "$@"; do
-  [ -e "$f" ] || continue
-  parse "$f" || { echo "pre-push: $f is not valid YAML" >&2; FAIL=1; }
-done
+if [ "$PARSER" != none ]; then
+  for f in "$@"; do
+    [ -e "$f" ] || continue
+    parse "$f" || { echo "pre-push: $f is not valid YAML" >&2; FAIL=1; }
+  done
+fi
 
 if [ "$FAIL" -eq 0 ] && command -v actionlint >/dev/null 2>&1; then
   # actionlint with no args lints .github/workflows/*.yml|*.yaml (and any
