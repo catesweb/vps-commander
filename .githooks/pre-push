@@ -1,0 +1,51 @@
+#!/bin/sh
+# Pre-push: fail the push before it leaves the machine if any GitHub Actions
+# workflow YAML cannot be parsed. Workflows fail SILENTLY at parse time on GitHub:
+# an invalid file produces a run with ZERO jobs, so nothing inside CI can catch it
+# and a broken release path looks like "nothing happened". Bitten twice
+# (2026-08-01): a secrets-context-in-if: parse error that killed release.yml with
+# no jobs, and an unquoted colon in a step name that broke ci.yml.
+#
+# Deliberately cheap: YAML validity only, no schema checks. Upgrade to actionlint
+# here if parse errors ever stop being the failure mode. Uses the repo's own
+# node_modules/js-yaml when present (fast, works offline); otherwise falls back to
+# `npx -y js-yaml` (downloads on first use). If no parser is available, warn and
+# continue rather than block every push on tooling.
+
+set -u
+
+DIR=.github/workflows
+[ -d "$DIR" ] || exit 0
+
+# No workflow files -> nothing to check. The unmatched glob stays literal, so
+# filter to files that actually exist below.
+set -- "$DIR"/*.yml "$DIR"/*.yaml
+[ -e "$1" ] || exit 0
+
+parse() { # $1 = workflow file
+  if [ -f node_modules/js-yaml/package.json ]; then
+    node -e 'const y=require("./node_modules/js-yaml");const f=process.argv[1];
+      try{y.load(require("fs").readFileSync(f,"utf8"));}
+      catch(e){console.error("pre-push: YAML parse failed in "+f+": "+e.message);process.exit(1);}' "$1"
+  elif command -v npx >/dev/null 2>&1; then
+    npx -y js-yaml "$1" >/dev/null
+  else
+    echo "pre-push: no js-yaml available (node/npx missing) -- skipping workflow YAML check" >&2
+    exit 0
+  fi
+}
+
+FAIL=0
+for f in "$@"; do
+  [ -e "$f" ] || continue
+  parse "$f" || { echo "pre-push: $f is not valid YAML" >&2; FAIL=1; }
+done
+
+if [ "$FAIL" -ne 0 ]; then
+  echo "pre-push: refusing to push -- fix the workflow file(s) above." >&2
+  echo "  GitHub runs workflows with ZERO jobs on a parse error (silent failure);" >&2
+  echo "  validate locally with:  npx -y js-yaml <file>" >&2
+  exit 1
+fi
+
+exit 0

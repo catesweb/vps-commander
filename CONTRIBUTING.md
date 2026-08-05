@@ -30,7 +30,7 @@ Thanks for taking an interest in VPS Commander — a cross-platform Electron des
 git clone https://github.com/catesweb/vps-commander.git
 cd vps-commander
 npm install
-git config core.hooksPath .githooks   # enable the commit-msg attribution check
+git config core.hooksPath .githooks   # enable the commit-msg + pre-push hooks
 ```
 
 The last line is required once per clone. Git does not enable repo-tracked
@@ -38,6 +38,11 @@ hooks automatically, and without it the `commit-msg` hook that rejects
 AI/tool attribution footers never runs locally — CI still catches them, but
 only after the commit is pushed, by which point a `Co-Authored-By` trailer
 has already registered that account as a contributor on GitHub.
+
+The same `core.hooksPath` setting also enables the `pre-push` hook, which parses
+`.github/workflows/*.yml` locally before anything is pushed -- GitHub runs an
+invalid workflow file with zero jobs and no error, so a broken release path
+would otherwise look like "nothing happened".
 
 ### Run the app
 
