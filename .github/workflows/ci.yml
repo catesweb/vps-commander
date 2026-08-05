@@ -94,6 +94,36 @@ jobs:
           fi
           echo "OK — no secrets context in if: conditions."
 
+  workflow-validate:
+    # Backstop for clones that never ran `git config core.hooksPath .githooks`:
+    # the pre-push hook parses workflow YAML locally, but a broken workflow on
+    # GitHub fails SILENTLY at startup (a run with zero jobs), so nothing inside
+    # CI can see it otherwise. Validate every workflow file here instead.
+    name: Workflow YAML validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse every workflow YAML
+        shell: bash
+        run: |
+          set -euo pipefail
+          FAIL=0
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -e "$f" ] || continue
+            if ! OUT=$(npx -y js-yaml "$f" 2>&1 >/dev/null); then
+              echo "FAIL $f"
+              printf '%s' "$OUT" | sed 's/^/     /'
+              FAIL=1
+            else
+              echo "ok   $f"
+            fi
+          done
+          if [ "$FAIL" -ne 0 ]; then
+            echo "::error::Workflow YAML failed to parse -- GitHub would run it with zero jobs. Fix and push again."
+            exit 1
+          fi
+          echo "OK -- all workflow files parse."
+
   docs:
     name: Docs freshness
     runs-on: ubuntu-latest
